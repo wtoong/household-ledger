@@ -3,6 +3,9 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <!-- 보안: 외부 전송 차단(connect-src none) + 인라인 스크립트 금지(script-src self). 앱은 네트워크를 전혀 쓰지 않는다. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta name="referrer" content="no-referrer" />
   <title>공용 가계부</title>
   <meta name="color-scheme" content="light dark" />
   <link rel="stylesheet" href="css/styles.css" />

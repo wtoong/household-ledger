@@ -1,3 +1,9 @@
 node_modules/
 .DS_Store
 *.log
+
+# 실제 금융 데이터는 절대 커밋하지 않는다 (내보낸 백업/은행 파일 등)
+*.csv
+*.xlsx
+*.xls
+ledger-*.json

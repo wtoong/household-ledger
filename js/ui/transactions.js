@@ -53,7 +53,7 @@
       const sign = t.amount >= 0 ? "pos" : "neg";
       const srcLabel = HL.fmt.sourceLabel(t.source);
       tr.innerHTML =
-        '<td class="td-date">' + t.date + "</td>" +
+        '<td class="td-date">' + HL.fmt.esc(t.date) + "</td>" +
         '<td class="td-desc">' + HL.fmt.esc(t.description || "(적요 없음)") +
           '<span class="src-tag">' + HL.fmt.esc(srcLabel) + "</span></td>" +
         '<td class="td-amt ' + sign + '">' + HL.fmt.signedWon(t.amount) + "</td>" +
