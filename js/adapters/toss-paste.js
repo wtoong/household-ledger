@@ -11,17 +11,19 @@
     "",
     "규칙:",
     "- date: \"YYYY-MM-DD\". 화면에 연도가 없으면 가장 가까운 표시 연도/문맥을 쓰고, 불확실하면 항목에 \"uncertain\": true 를 추가.",
+    "- time: \"HH:MM\" 또는 \"HH:MM:SS\"(24시간제). 화면/거래 상세에 시각이 있으면 넣고, 없으면 null. (같은 날 거래 정렬에 사용)",
     "- amount: 숫자만(콤마 제거). 출금/결제(잔액 감소)는 음수, 입금/수입은 양수.",
     "- type: 음수면 \"expense\", 양수면 \"income\".",
     "- description: 가맹점명/적요 그대로.",
     "- balance: 화면에 거래 후 잔액이 있으면 숫자로, 없으면 null.",
+    "- 같은 날 거래는 화면에 보이는 순서(위→아래) 그대로 유지하세요.",
     "- 광고/배너/합계 요약 줄은 제외. 실제 개별 거래만.",
     "- 금액·날짜가 잘려 불확실한 행은 \"uncertain\": true.",
     "",
     "출력 형식:",
     "[",
-    "  {\"date\":\"2026-06-14\",\"amount\":-12000,\"type\":\"expense\",\"description\":\"스타벅스 강남\",\"balance\":1530000},",
-    "  {\"date\":\"2026-06-14\",\"amount\":2500000,\"type\":\"income\",\"description\":\"급여\",\"balance\":1542000}",
+    "  {\"date\":\"2026-06-14\",\"time\":\"13:05\",\"amount\":-12000,\"type\":\"expense\",\"description\":\"스타벅스 강남\",\"balance\":1530000},",
+    "  {\"date\":\"2026-06-14\",\"time\":null,\"amount\":2500000,\"type\":\"income\",\"description\":\"급여\",\"balance\":1542000}",
     "]",
   ].join("\n");
 
@@ -52,14 +54,18 @@
       const out = [];
       for (let i = 0; i < data.length; i++) {
         const r = data[i] || {};
-        const date = HL.adapters.get("mg-account")._internal.toIso(r.date);
+        const mgInternal = HL.adapters.get("mg-account")._internal;
+        const date = mgInternal.toIso(r.date);
         const amount = coerceNumber(r.amount);
         if (!date || isNaN(amount) || amount === 0) continue;
+        // 시각: 별도 time 필드 우선, 없으면 date 문자열(예: "2026-06-14 13:05")에서 추출
+        const time = mgInternal.toTime(r.time) || mgInternal.toTime(r.date) || undefined;
         const description = String(r.description == null ? "" : r.description).trim();
         const balance = (r.balance == null || r.balance === "") ? undefined : coerceNumber(r.balance);
-        const keyParts = [SOURCE, date, amount, description, (balance == null || isNaN(balance)) ? "" : balance];
+        const keyParts = [SOURCE, date, time || "", amount, description, (balance == null || isNaN(balance)) ? "" : balance];
         out.push({
           date: date,
+          time: time,
           amount: amount,
           type: amount >= 0 ? "income" : "expense",
           description: description,
