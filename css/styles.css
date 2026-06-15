@@ -124,6 +124,7 @@ main { max-width: 860px; margin: 0 auto; padding: 8px 12px; }
 .tx-table th.right { text-align: right; }
 .tx-table td { padding: 9px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
 .td-date { white-space: nowrap; color: var(--muted); }
+.td-time { display: block; font-size: 11px; color: var(--muted); opacity: 0.75; font-variant-numeric: tabular-nums; }
 .td-desc { word-break: break-word; }
 .td-amt { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 600; }
 .td-amt.pos { color: var(--income); }

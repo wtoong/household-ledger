@@ -94,7 +94,34 @@ function check(name, cond) {
 
   console.log("\n[6] CSV 내보내기 round-trip 헤더");
   const csvOut = HL.store.exportCSV(_db);
-  check("CSV 헤더 포함", csvOut.indexOf("date,amount,type,description,source") !== -1);
+  check("CSV 헤더 포함(time 컬럼)", csvOut.indexOf("date,time,amount,type,description,source") !== -1);
+
+  console.log("\n[7] 시각(time) 파싱 + 같은 날 정렬");
+  // 새마을금고: 거래일시 컬럼에 시각 포함
+  const csvT = HL.encoding.parseCsv(["거래일시,적요,출금금액,입금금액,잔액",
+    "2026-05-22 09:30:00,아침,1000,,100000",
+    "2026-05-22 18:45:12,저녁,2000,,98000"].join("\n"));
+  const txsT = mg._internal.rowsToTransactions(csvT);
+  check("거래일시에서 시각 추출", txsT[0].time === "09:30:00" && txsT[1].time === "18:45:12");
+  check("시각이 dedupKey를 구분", txsT[0].dedupKey !== txsT[1].dedupKey);
+
+  // 토스: 별도 time 필드
+  const tossT = await toss.parseText(JSON.stringify([
+    { date: "2026-05-22", time: "23:10", amount: -20000, description: "남현지", balance: 15363722 },
+    { date: "2026-05-22", time: "08:00", amount: -25600, description: "버거킹", balance: 15338122 },
+  ]));
+  check("토스 time 필드 파싱", tossT[0].time === "23:10:00" && tossT[1].time === "08:00:00");
+  check("토스 time 없으면 undefined", (await toss.parseText('[{"date":"2026-05-22","amount":-100,"description":"x"}]'))[0].time === undefined);
+
+  // 같은 날 시각 역순 정렬 (transactions.dtKey 동작과 동일한 키)
+  function dtKey(t) { return t.date + "T" + (t.time || ""); }
+  const mixed = [
+    { date: "2026-05-22", time: "08:00:00" }, // 버거킹
+    { date: "2026-05-22", time: "23:10:00" }, // 남현지
+    { date: "2026-05-23", time: undefined },  // 다음날
+  ].slice().sort((a, b) => { const ka = dtKey(a), kb = dtKey(b); return ka === kb ? 0 : (ka < kb ? 1 : -1); });
+  check("다음날이 맨 위", mixed[0].date === "2026-05-23");
+  check("같은 날은 늦은 시각이 먼저", mixed[1].time === "23:10:00" && mixed[2].time === "08:00:00");
 
   console.log("\n결과: " + pass + " passed, " + fail + " failed\n");
   process.exit(fail ? 1 : 0);

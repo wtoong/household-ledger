@@ -4,6 +4,9 @@
 
   function el(id) { return document.getElementById(id); }
 
+  // 정렬용 날짜+시각 키. 시각이 없으면 그날의 가장 이른 거래로 취급("")한다.
+  function dtKey(t) { return t.date + "T" + (t.time || ""); }
+
   const PAGE = 50;
   let _shown = PAGE;
   let _filtered = [];
@@ -23,8 +26,10 @@
       return true;
     });
     _filtered.sort(function (a, b) {
-      if (a.date !== b.date) return a.date < b.date ? 1 : -1; // 최신 먼저
-      return (b.importedAt || "").localeCompare(a.importedAt || "");
+      // 날짜+시각 기준 최신 먼저. 시각이 있으면 같은 날 거래도 올바르게 정렬된다.
+      const ka = dtKey(a), kb = dtKey(b);
+      if (ka !== kb) return ka < kb ? 1 : -1;
+      return (b.importedAt || "").localeCompare(a.importedAt || ""); // 최종 동점 처리
     });
     _shown = PAGE;
     renderList();
@@ -52,8 +57,9 @@
       const tr = document.createElement("tr");
       const sign = t.amount >= 0 ? "pos" : "neg";
       const srcLabel = HL.fmt.sourceLabel(t.source);
+      const timeLabel = t.time ? '<span class="td-time">' + HL.fmt.esc(t.time.slice(0, 5)) + "</span>" : "";
       tr.innerHTML =
-        '<td class="td-date">' + HL.fmt.esc(t.date) + "</td>" +
+        '<td class="td-date">' + HL.fmt.esc(t.date) + timeLabel + "</td>" +
         '<td class="td-desc">' + HL.fmt.esc(t.description || "(적요 없음)") +
           '<span class="src-tag">' + HL.fmt.esc(srcLabel) + "</span></td>" +
         '<td class="td-amt ' + sign + '">' + HL.fmt.signedWon(t.amount) + "</td>" +
