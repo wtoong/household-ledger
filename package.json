@@ -1,0 +1,10 @@
+{
+  "name": "household-ledger",
+  "version": "0.1.0",
+  "private": true,
+  "description": "공용 가계부 — 합산 현금흐름, 로컬 전용(IndexedDB), 어댑터 기반 임포트",
+  "scripts": {
+    "test": "node test/smoke.js",
+    "serve": "python3 -m http.server 8080"
+  }
+}

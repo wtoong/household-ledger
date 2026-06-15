@@ -1,0 +1,151 @@
+:root {
+  --bg: #f4f5f7;
+  --card: #ffffff;
+  --ink: #1c2530;
+  --muted: #6b7785;
+  --line: #e4e8ec;
+  --accent: #2f6df6;
+  --income: #1f9d6b;
+  --expense: #e5484d;
+  --shadow: 0 1px 3px rgba(20, 30, 45, 0.08), 0 1px 2px rgba(20, 30, 45, 0.04);
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #11151a;
+    --card: #1a2027;
+    --ink: #e7edf3;
+    --muted: #93a1b0;
+    --line: #2a323b;
+    --accent: #5b8cff;
+    --income: #3fcf8e;
+    --expense: #ff6b6f;
+    --shadow: none;
+  }
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  padding-bottom: 40px;
+}
+
+.app-header { padding: 20px 16px 8px; max-width: 860px; margin: 0 auto; }
+.app-header h1 { font-size: 22px; margin: 0; letter-spacing: -0.02em; }
+.subtitle { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+
+.tabs {
+  position: sticky; top: 0; z-index: 5;
+  display: flex; gap: 4px;
+  max-width: 860px; margin: 12px auto 0; padding: 6px 10px;
+  background: var(--bg);
+}
+.tab-btn {
+  flex: 1; padding: 10px 8px; border: none; border-radius: 10px;
+  background: transparent; color: var(--muted); font-size: 14px; font-weight: 600;
+  cursor: pointer; transition: background .15s, color .15s;
+}
+.tab-btn.active { background: var(--card); color: var(--ink); box-shadow: var(--shadow); }
+
+main { max-width: 860px; margin: 0 auto; padding: 8px 12px; }
+.view { display: none; animation: fade .2s ease; }
+.view.active { display: block; }
+@keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+.card {
+  background: var(--card); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 16px; margin: 12px 0;
+}
+.card-title { font-size: 15px; margin: 0 0 12px; }
+
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+
+/* 월 네비 */
+.month-nav { display: flex; align-items: center; justify-content: center; gap: 16px; margin: 14px 0 4px; }
+.month-label { font-size: 16px; font-weight: 700; min-width: 130px; text-align: center; }
+.ghost-btn {
+  background: var(--card); border: 1px solid var(--line); color: var(--ink);
+  border-radius: 9px; padding: 7px 12px; font-size: 15px; cursor: pointer;
+}
+.ghost-btn:disabled { opacity: .4; cursor: default; }
+
+/* 순현금흐름 카드 */
+.net-card {
+  background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 22px 16px; margin: 8px 0 4px; text-align: center;
+}
+.net-cap { color: var(--muted); font-size: 13px; }
+.net-big { display: block; font-size: 40px; font-weight: 800; letter-spacing: -0.03em; margin: 6px 0 12px; }
+.net-big.pos { color: var(--income); }
+.net-big.neg { color: var(--expense); }
+.net-sub { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.pill {
+  font-size: 13px; padding: 6px 12px; border-radius: 999px; background: var(--bg); color: var(--muted);
+}
+.pill b { color: var(--ink); margin-left: 4px; }
+.pill.income b { color: var(--income); }
+.pill.expense b { color: var(--expense); }
+
+/* 차트 */
+.chart-wrap { width: 100%; overflow: hidden; }
+.chart-svg { width: 100%; height: auto; display: block; }
+.chart-baseline { stroke: var(--line); stroke-width: 1; }
+.bar-income { fill: var(--income); }
+.bar-expense { fill: var(--expense); }
+.bar-hit { fill: transparent; }
+.bar-hit:hover { fill: rgba(120,140,160,.08); }
+.bar-hit.selected { fill: rgba(47,109,246,.10); }
+.chart-xlabel { fill: var(--muted); font-size: 11px; }
+.chart-xlabel.selected { fill: var(--accent); font-weight: 700; }
+.chart-legend { display: flex; gap: 16px; justify-content: center; margin-top: 8px; font-size: 12px; color: var(--muted); }
+.chart-legend .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: middle; }
+.swatch.income { background: var(--income); }
+.swatch.expense { background: var(--expense); }
+
+.empty-hint { text-align: center; color: var(--muted); font-size: 14px; padding: 8px 16px; }
+
+/* 필터 / 테이블 */
+.filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-bottom: 10px; }
+.filters label { display: flex; flex-direction: column; font-size: 12px; color: var(--muted); gap: 4px; }
+.filters .grow { flex: 1; min-width: 140px; }
+.filters input, .filters select, .paste-box, .prompt-box, #import-source {
+  font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px;
+  background: var(--card); color: var(--ink);
+}
+.tx-summary { font-size: 12px; margin: 4px 0 10px; }
+.table-scroll { overflow-x: auto; }
+.tx-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.tx-table th { text-align: left; color: var(--muted); font-weight: 600; font-size: 12px; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.tx-table th.right { text-align: right; }
+.tx-table td { padding: 9px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.td-date { white-space: nowrap; color: var(--muted); }
+.td-desc { word-break: break-word; }
+.td-amt { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 600; }
+.td-amt.pos { color: var(--income); }
+.td-amt.neg { color: var(--expense); }
+.td-bal { text-align: right; white-space: nowrap; color: var(--muted); font-variant-numeric: tabular-nums; }
+.src-tag { display: inline-block; margin-left: 6px; font-size: 10.5px; color: var(--muted); background: var(--bg); padding: 1px 6px; border-radius: 6px; vertical-align: middle; }
+.more-btn { width: 100%; margin-top: 10px; padding: 10px; border: 1px dashed var(--line); background: transparent; color: var(--muted); border-radius: 10px; cursor: pointer; }
+
+/* 가져오기 */
+.block { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+.block select { max-width: 320px; }
+#import-file-zone, #import-text-zone { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.prompt-head { display: flex; justify-content: space-between; align-items: center; margin: 14px 0 6px; gap: 10px; }
+.prompt-box { width: 100%; resize: vertical; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.5; }
+.paste-box { width: 100%; resize: vertical; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px; }
+.primary-btn { align-self: flex-start; background: var(--accent); color: #fff; border: none; border-radius: 10px; padding: 10px 18px; font-size: 14px; font-weight: 600; cursor: pointer; }
+.danger-btn { background: var(--expense); color: #fff; border: none; border-radius: 10px; padding: 10px 18px; font-size: 14px; font-weight: 600; cursor: pointer; }
+.btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin: 6px 0; }
+.import-result { margin-top: 14px; padding: 12px 14px; border-radius: 10px; font-size: 13.5px; background: var(--bg); white-space: pre-wrap; }
+.import-result.ok { background: rgba(31,157,107,.12); color: var(--income); }
+.import-result.err { background: rgba(229,72,77,.12); color: var(--expense); }
+.note-card h3 { margin: 0 0 6px; font-size: 14px; }
+hr { border: none; border-top: 1px solid var(--line); margin: 16px 0; }
+
+.app-footer { text-align: center; max-width: 860px; margin: 16px auto 0; }

@@ -1,0 +1,16 @@
+다음은 토스 앱의 거래내역 화면 캡쳐입니다. 모든 거래 행을 추출해 아래 JSON 배열로만 출력하세요. 설명·코드펜스 없이 순수 JSON만.
+
+규칙:
+- date: "YYYY-MM-DD". 화면에 연도가 없으면 가장 가까운 표시 연도/문맥을 쓰고, 불확실하면 항목에 "uncertain": true 를 추가.
+- amount: 숫자만(콤마 제거). 출금/결제(잔액 감소)는 음수, 입금/수입은 양수.
+- type: 음수면 "expense", 양수면 "income".
+- description: 가맹점명/적요 그대로.
+- balance: 화면에 거래 후 잔액이 있으면 숫자로, 없으면 null.
+- 광고/배너/합계 요약 줄은 제외. 실제 개별 거래만.
+- 금액·날짜가 잘려 불확실한 행은 "uncertain": true.
+
+출력 형식:
+[
+  {"date":"2026-06-14","amount":-12000,"type":"expense","description":"스타벅스 강남","balance":1530000},
+  {"date":"2026-06-14","amount":2500000,"type":"income","description":"급여","balance":1542000}
+]
