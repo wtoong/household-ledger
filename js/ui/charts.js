@@ -10,11 +10,16 @@
     return Math.round(n).toLocaleString("ko-KR");
   }
 
-  // data: [{month:'YYYY-MM', income, expense, net}], onSelect(month), selected
+  // data: [{month:'YYYY-MM', income, expense}]
+  // opts: { rangeStart, rangeEnd ('YYYY-MM'),  onTap(month), onPan(deltaMonths) }
+  //  - 막대를 탭하면 onTap(그 달).  좌우로 끌면 onPan(이동한 개월수, 새 달쪽이 +).
+  //  - rangeStart~rangeEnd 구간을 띠로 강조(같으면 단일 선택).
   function renderBars(container, data, opts) {
     opts = opts || {};
-    const selected = opts.selected;
-    const onSelect = opts.onSelect;
+    const rangeStart = opts.rangeStart, rangeEnd = opts.rangeEnd;
+    const single = rangeStart && rangeStart === rangeEnd;
+    const onTap = opts.onTap, onPan = opts.onPan;
+    function inRange(m) { return rangeStart && rangeEnd && m >= rangeStart && m <= rangeEnd; }
     container.innerHTML = "";
     if (!data.length) {
       container.innerHTML = '<p class="muted">표시할 데이터가 없습니다. [가져오기]에서 거래를 추가하세요.</p>';
@@ -33,22 +38,40 @@
     const NS = "http://www.w3.org/2000/svg";
     const svg = document.createElementNS(NS, "svg");
     svg.setAttribute("viewBox", "0 0 " + W + " " + H);
-    svg.setAttribute("class", "chart-svg");
+    svg.setAttribute("class", "chart-svg chart-bars");
     svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+    svg.style.touchAction = "pan-y"; // 세로 스크롤은 살리고 가로 끌기만 가져온다
+
+    // 끌어서 이동할 때 통째로 평행이동할 그룹
+    const root = document.createElementNS(NS, "g");
+    svg.appendChild(root);
 
     // 기준선
     const base = document.createElementNS(NS, "line");
     base.setAttribute("x1", padL); base.setAttribute("x2", W - padR);
     base.setAttribute("y1", padT + plotH); base.setAttribute("y2", padT + plotH);
     base.setAttribute("class", "chart-baseline");
-    svg.appendChild(base);
+    root.appendChild(base);
 
     data.forEach(function (d, i) {
       const cx = padL + groupW * i + groupW / 2;
       const incH = (d.income / max) * plotH;
       const expH = (d.expense / max) * plotH;
 
-      function bar(x, h, cls, label) {
+      // 선택 구간 강조 띠(막대 뒤). 끝점은 진하게.
+      const within = inRange(d.month);
+      if (within) {
+        const band = document.createElementNS(NS, "rect");
+        band.setAttribute("x", padL + groupW * i);
+        band.setAttribute("y", padT);
+        band.setAttribute("width", groupW);
+        band.setAttribute("height", plotH);
+        const edge = !single && (d.month === rangeStart || d.month === rangeEnd);
+        band.setAttribute("class", "bar-band" + (single ? " single" : "") + (edge ? " edge" : ""));
+        root.appendChild(band);
+      }
+
+      function bar(x, h, cls) {
         const rect = document.createElementNS(NS, "rect");
         rect.setAttribute("x", x);
         rect.setAttribute("y", padT + plotH - h);
@@ -56,41 +79,77 @@
         rect.setAttribute("height", Math.max(0, h));
         rect.setAttribute("class", cls);
         rect.setAttribute("rx", "2");
-        const title = document.createElementNS(NS, "title");
-        title.textContent = d.month + " " + label + " " + Math.round(d.income).toLocaleString();
-        rect.appendChild(title);
+        root.appendChild(rect);
         return rect;
       }
 
-      const incRect = bar(cx - barW - gap / 2, incH, "bar-income", "수입");
-      incRect.querySelector("title").textContent = d.month + " 수입 " + Math.round(d.income).toLocaleString("ko-KR") + "원";
-      const expRect = bar(cx + gap / 2, expH, "bar-expense", "지출");
-      expRect.querySelector("title").textContent = d.month + " 지출 " + Math.round(d.expense).toLocaleString("ko-KR") + "원";
-      svg.appendChild(incRect);
-      svg.appendChild(expRect);
+      const incRect = bar(cx - barW - gap / 2, incH, "bar-income");
+      const incTitle = document.createElementNS(NS, "title");
+      incTitle.textContent = d.month + " 수입 " + Math.round(d.income).toLocaleString("ko-KR") + "원";
+      incRect.appendChild(incTitle);
+      const expRect = bar(cx + gap / 2, expH, "bar-expense");
+      const expTitle = document.createElementNS(NS, "title");
+      expTitle.textContent = d.month + " 지출 " + Math.round(d.expense).toLocaleString("ko-KR") + "원";
+      expRect.appendChild(expTitle);
 
-      // 선택 하이라이트 + 클릭 영역
+      // hover 영역(탭/끌기는 svg 전체에서 처리)
       const hit = document.createElementNS(NS, "rect");
       hit.setAttribute("x", padL + groupW * i);
       hit.setAttribute("y", padT);
       hit.setAttribute("width", groupW);
       hit.setAttribute("height", plotH);
-      hit.setAttribute("class", "bar-hit" + (d.month === selected ? " selected" : ""));
-      hit.style.cursor = "pointer";
-      hit.addEventListener("click", function () { if (onSelect) onSelect(d.month); });
-      svg.appendChild(hit);
+      hit.setAttribute("class", "bar-hit");
+      root.appendChild(hit);
 
-      // x축 라벨 (MM월)
+      // x축 라벨 (MM월). 연도가 바뀌는 1월은 'YY.1월'로.
+      const mm = +d.month.slice(5, 7);
       const tx = document.createElementNS(NS, "text");
       tx.setAttribute("x", cx);
       tx.setAttribute("y", H - 8);
       tx.setAttribute("text-anchor", "middle");
-      tx.setAttribute("class", "chart-xlabel" + (d.month === selected ? " selected" : ""));
-      tx.textContent = (+d.month.slice(5, 7)) + "월";
-      svg.appendChild(tx);
+      tx.setAttribute("class", "chart-xlabel" + (within ? " selected" : ""));
+      tx.textContent = (mm === 1 || i === 0) ? (d.month.slice(2, 4) + "." + mm + "월") : (mm + "월");
+      root.appendChild(tx);
     });
 
     container.appendChild(svg);
+
+    // --- 탭(선택) + 끌기(기간 이동) 제스처 ---
+    if (onTap || onPan) {
+      let active = false, panning = false, downX = 0, downMonth = null;
+      function scale() { const r = svg.getBoundingClientRect(); return r.width ? W / r.width : 1; }
+      function monthAt(clientX) {
+        const r = svg.getBoundingClientRect();
+        const xUser = (clientX - r.left) * scale();
+        let idx = Math.floor((xUser - padL) / groupW);
+        idx = Math.max(0, Math.min(data.length - 1, idx));
+        return data[idx] ? data[idx].month : null;
+      }
+      svg.addEventListener("pointerdown", function (e) {
+        active = true; panning = false; downX = e.clientX; downMonth = monthAt(e.clientX);
+        try { svg.setPointerCapture(e.pointerId); } catch (_) {}
+      });
+      svg.addEventListener("pointermove", function (e) {
+        if (!active) return;
+        const dxPx = e.clientX - downX;
+        if (!panning && Math.abs(dxPx) > 6) panning = true;
+        if (panning) root.setAttribute("transform", "translate(" + (dxPx * scale()) + ",0)");
+      });
+      function finish(e) {
+        if (!active) return;
+        active = false;
+        root.removeAttribute("transform");
+        if (panning) {
+          const dxUser = (e.clientX - downX) * scale();
+          const delta = Math.round(-dxUser / groupW); // 왼쪽으로 끌면 다음(최신) 쪽 +
+          if (delta && onPan) onPan(delta);
+        } else if (downMonth && onTap) {
+          onTap(downMonth);
+        }
+      }
+      svg.addEventListener("pointerup", finish);
+      svg.addEventListener("pointercancel", function () { active = false; panning = false; root.removeAttribute("transform"); });
+    }
 
     // 범례
     const legend = document.createElement("div");
@@ -102,8 +161,10 @@
   }
 
   // 잔액 변동 추이 선형 차트. series: [{date:'YYYY-MM-DD', balance}]
+  // opts.onPickDate(date) 를 주면 각 시점을 탭해 그날 거래로 이동할 수 있다.
   function renderLine(container, series, opts) {
     opts = opts || {};
+    const onPickDate = opts.onPickDate;
     container.innerHTML = "";
     if (!series.length) {
       container.innerHTML = '<p class="muted">표시할 잔액 데이터가 없습니다. 잔액이 포함된 내역을 가져오면 추이가 나타납니다.</p>';
@@ -175,12 +236,11 @@
     path.setAttribute("class", "chart-line");
     svg.appendChild(path);
 
-    // x축 라벨: 달이 바뀌는 첫 지점마다 'M월' (+필요시 점/툴팁)
+    // x축 라벨: 달이 바뀌는 첫 지점마다 'M월'(점은 아래에서 모든 시점에 그린다)
     let prevMonth = "";
     series.forEach(function (d, i) {
       const month = d.date.slice(0, 7);
-      const newMonth = month !== prevMonth;
-      if (newMonth) {
+      if (month !== prevMonth) {
         prevMonth = month;
         const tx = document.createElementNS(NS, "text");
         tx.setAttribute("x", X(xs[i]));
@@ -189,16 +249,27 @@
         tx.setAttribute("class", "chart-xlabel");
         tx.textContent = (+d.date.slice(5, 7)) + "월";
         svg.appendChild(tx);
-        // 달 시작점에 작은 점 + 툴팁
-        const dot = document.createElementNS(NS, "circle");
-        dot.setAttribute("cx", X(xs[i]));
-        dot.setAttribute("cy", Y(d.balance));
-        dot.setAttribute("r", "2.5");
-        dot.setAttribute("class", "chart-dot");
-        const title = document.createElementNS(NS, "title");
-        title.textContent = d.date + " · " + Math.round(d.balance).toLocaleString("ko-KR") + "원";
-        dot.appendChild(title);
-        svg.appendChild(dot);
+      }
+    });
+
+    // 각 시점에 탭 가능한 점(작은 점 + 넓은 투명 히트). 탭하면 그날 거래내역으로.
+    series.forEach(function (d, i) {
+      const cxp = X(xs[i]), cyp = Y(d.balance);
+      const pt = document.createElementNS(NS, "circle");
+      pt.setAttribute("cx", cxp); pt.setAttribute("cy", cyp);
+      pt.setAttribute("r", "2.2");
+      pt.setAttribute("class", "chart-pt");
+      svg.appendChild(pt);
+      if (onPickDate) {
+        const hit = document.createElementNS(NS, "circle");
+        hit.setAttribute("cx", cxp); hit.setAttribute("cy", cyp);
+        hit.setAttribute("r", "9");
+        hit.setAttribute("class", "chart-pick");
+        const ht = document.createElementNS(NS, "title");
+        ht.textContent = d.date + " · " + Math.round(d.balance).toLocaleString("ko-KR") + "원 (탭하면 그날 거래)";
+        hit.appendChild(ht);
+        hit.addEventListener("click", function () { onPickDate(d.date); });
+        svg.appendChild(hit);
       }
     });
 

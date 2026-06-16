@@ -99,9 +99,16 @@ main { max-width: 860px; margin: 0 auto; padding: 8px 12px; }
 .bar-expense { fill: var(--expense); }
 .bar-hit { fill: transparent; }
 .bar-hit:hover { fill: rgba(120,140,160,.08); }
-.bar-hit.selected { fill: rgba(47,109,246,.10); }
+/* 선택 구간 강조 띠 */
+.bar-band { fill: rgba(47,109,246,.08); pointer-events: none; }
+.bar-band.single { fill: rgba(47,109,246,.14); }
+.bar-band.edge { fill: rgba(47,109,246,.18); }
 .chart-xlabel { fill: var(--muted); font-size: 11px; }
 .chart-xlabel.selected { fill: var(--accent); font-weight: 700; }
+/* 막대 차트: 끌어서 기간 이동 */
+.chart-bars { cursor: grab; touch-action: pan-y; }
+.chart-bars:active { cursor: grabbing; }
+.chart-hint { text-align: center; margin: 8px 0 0; }
 /* 잔액 추이(선형) */
 .chart-grid { stroke: var(--line); stroke-width: 1; stroke-dasharray: 3 4; }
 .chart-ylabel { fill: var(--muted); font-size: 10px; }
@@ -109,6 +116,9 @@ main { max-width: 860px; margin: 0 auto; padding: 8px 12px; }
 .chart-area { fill: var(--accent); opacity: .08; stroke: none; }
 .chart-dot { fill: var(--accent); }
 .chart-dot.last { stroke: var(--card); stroke-width: 2; }
+.chart-pt { fill: var(--accent); opacity: .55; }
+.chart-pick { fill: transparent; cursor: pointer; }
+.chart-pick:hover { fill: rgba(47,109,246,.18); }
 .chart-legend b { color: var(--ink); }
 
 .chart-legend { display: flex; gap: 16px; justify-content: center; margin-top: 8px; font-size: 12px; color: var(--muted); }
