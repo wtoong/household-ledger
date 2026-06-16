@@ -80,6 +80,26 @@ function check(name, cond) {
   check("음수→expense, type 자동추론", ttx[0].type === "expense" && ttx[1].type === "income");
   check("source=toss", ttx[0].source === "toss");
 
+  console.log("\n[4-1] 미래 날짜(오늘 이후)는 잘못된 정보라 버린다");
+  const pad2 = (n) => (n < 10 ? "0" : "") + n;
+  const now = new Date();
+  const todayIso = now.getFullYear() + "-" + pad2(now.getMonth() + 1) + "-" + pad2(now.getDate());
+  const future = new Date(now.getTime() + 86400000 * 2);
+  const futureIso = future.getFullYear() + "-" + pad2(future.getMonth() + 1) + "-" + pad2(future.getDate());
+  const fjson = JSON.stringify([
+    { date: "2026-01-02", amount: -1000, description: "과거거래" },
+    { date: todayIso, amount: -2000, description: "오늘거래" },
+    { date: futureIso, amount: -3000, description: "미래거래" },
+  ]);
+  const ftx = await toss.parseText(fjson);
+  check("미래 거래 제외 (3건 중 2건)", ftx.length === 2);
+  check("당일 거래는 유지", ftx.some((t) => t.date === todayIso));
+  check("미래 거래는 없음", !ftx.some((t) => t.date === futureIso));
+  let onlyFutureErr = null;
+  try { await toss.parseText(JSON.stringify([{ date: futureIso, amount: -100, description: "x" }])); }
+  catch (e) { onlyFutureErr = e; }
+  check("전부 미래면 안내 에러", !!onlyFutureErr && /미래 날짜/.test(onlyFutureErr.message));
+
   console.log("\n[5] 월별 집계 (transfer 제외)");
   const sample = [
     { date: "2026-06-01", amount: 2500000, type: "income" },
@@ -199,7 +219,7 @@ function check(name, cond) {
   console.log("\n[13] 계좌(account) 기준: 토스+CSV 같은 계좌를 한 체인으로 병합 검증");
   // 같은 새마을금고 계좌를 CSV(급여)와 토스 캡쳐(커피)로 나눠 넣어도 account가 같으면 한 체인.
   const mgRows = HL.encoding.parseCsv(["거래일시,적요,출금금액,입금금액,잔액",
-    "2026-07-01 09:00:00,급여,,1000000,1000000"].join("\n"));
+    "2026-06-01 09:00:00,급여,,1000000,1000000"].join("\n"));
   const mgTx = mg._internal.rowsToTransactions(mgRows, "주계좌");
   check("account 라벨 스탬프", mgTx[0].account === "주계좌");
   // account를 주면 dedupKey가 source-폴백과 달라진다(계좌가 키에 반영됨)
@@ -208,7 +228,7 @@ function check(name, cond) {
   check("account 미지정은 기존대로 source 폴백(키 안정)", mgNoAcct[0].account === undefined);
 
   const tossAcct = await toss.parseText(
-    '[{"date":"2026-07-02","time":"10:00","amount":-3000,"description":"커피","balance":997000}]', { account: "주계좌" });
+    '[{"date":"2026-06-02","time":"10:00","amount":-3000,"description":"커피","balance":997000}]', { account: "주계좌" });
   check("토스도 account 스탬프", tossAcct[0].account === "주계좌");
 
   const merged = [
