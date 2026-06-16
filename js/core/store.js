@@ -48,6 +48,10 @@
     return HL.idb.getAll();
   }
 
+  function remove(id) {
+    return HL.idb.remove(id);
+  }
+
   function clear() {
     return HL.idb.clear();
   }
@@ -76,6 +80,7 @@
   HL.store = {
     importTransactions: importTransactions,
     getAll: getAll,
+    remove: remove,
     clear: clear,
     exportJSON: exportJSON,
     exportCSV: exportCSV,
