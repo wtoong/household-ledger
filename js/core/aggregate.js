@@ -72,32 +72,33 @@
     return acc;
   }
 
-  // 잔액 추이: balance가 있는 거래만 사용해 날짜별 "합산 잔액"을 만든다.
-  // 소스(계좌)별로 가장 최근에 알려진 잔액을 들고 있다가, 각 시점에 모두 더해 총 보유 잔액을 낸다.
-  // (단일 계좌면 그 계좌 잔액 그대로, 여러 계좌면 계좌 합계의 시계열)
+  // 잔액 추이: balance가 있는 거래를 "거래 단위"로 모두 펼쳐 하루 안의 등락까지 보존한다.
+  // 소스(계좌)별로 가장 최근에 알려진 잔액을 들고 있다가, 거래가 일어날 때마다 그 계좌 잔액을
+  // 갱신하고 모든 계좌의 잔액을 더한 "총 보유 잔액"을 그 시점의 한 점으로 남긴다.
+  // (단일 계좌면 그 계좌 잔액 그대로, 여러 계좌면 매 거래 시점의 계좌 합계)
+  // 같은 날 여러 건도 각각 한 점이 되므로, 당일 큰 출렁임이 한 값으로 뭉개지지 않는다.
+  // 정렬은 날짜+시각 오름차순. 같은 시각/시각 미상은 입력 순서를 유지(안정 정렬에 의존).
   // fromMonth/toMonth('YYYY-MM')를 주면 그 구간의 시점만 남긴다. 합산 잔액은
   // 전체 거래로 계산한 뒤 잘라내므로(여러 계좌의 직전 잔액이 보존됨) 절대값이 정확하다.
-  // 반환: [{date:'YYYY-MM-DD', balance}] 날짜 오름차순
+  // 반환: [{date:'YYYY-MM-DD', time, balance}] 날짜·시각 오름차순
   function balanceSeries(transactions, fromMonth, toMonth) {
     const withBal = transactions.filter(function (t) {
       return typeof t.balance === "number" && t.date;
     });
     if (!withBal.length) return [];
-    // 날짜 오름차순. 같은 날은 원래 순서를 유지(은행 파일은 대체로 시간순) — sort 안정성에 의존.
+    // 날짜+시각 오름차순. 같은 키는 원래 순서 유지(은행 파일은 대체로 시간순) — sort 안정성에 의존.
     const sorted = withBal.slice().sort(function (a, b) {
-      return a.date < b.date ? -1 : a.date > b.date ? 1 : 0;
+      const ka = a.date + "T" + (a.time || ""), kb = b.date + "T" + (b.time || "");
+      return ka < kb ? -1 : ka > kb ? 1 : 0;
     });
     const lastBySource = {}; // source -> 가장 최근 잔액
-    const byDate = new Map(); // date -> 그 날 종료시점의 합산 잔액
+    let out = [];
     sorted.forEach(function (t) {
       lastBySource[t.source || "_"] = t.balance;
       let total = 0;
       for (const k in lastBySource) total += lastBySource[k];
-      byDate.set(t.date, total); // 같은 날 여러 건이면 마지막 값으로 갱신
+      out.push({ date: t.date, time: t.time || "", balance: total }); // 거래마다 한 점
     });
-    let out = [];
-    byDate.forEach(function (bal, date) { out.push({ date: date, balance: bal }); });
-    out.sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
     if (fromMonth || toMonth) {
       out = out.filter(function (p) {
         const mk = p.date.slice(0, 7);
