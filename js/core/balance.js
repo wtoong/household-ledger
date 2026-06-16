@@ -7,8 +7,9 @@
 (function () {
   window.HL = window.HL || {};
 
-  // 잔액은 계좌 단위 개념이라 같은 계좌(=source)끼리만 체인을 만든다.
-  function acctKey(t) { return t.source || ""; }
+  // 잔액은 계좌 단위 개념이라 같은 계좌끼리만 체인을 만든다.
+  // account(계좌 라벨)가 우선이고, 없으면 source를 계좌로 본다(하위호환).
+  function acctKey(t) { return t.account || t.source || ""; }
   function dtKey(t) { return t.date + "T" + (t.time || ""); }
   function hasBal(t) { return typeof t.balance === "number" && !isNaN(t.balance); }
   // 원 단위 정수라 정확히 떨어지지만, 부동소수/반올림 여지를 위해 0.5원 허용.
@@ -109,7 +110,7 @@
           if (changed) {
             summary.reordered++;
             problems.push({
-              kind: "reordered", source: src,
+              kind: "reordered", account: src,
               date: cluster[0].date, time: cluster[0].time || "",
               count: cluster.length,
               ids: res.order.map(function (t) { return t.id; }),
@@ -142,7 +143,7 @@
           annotations[t.id] = { status: "gap", prevId: prev.id, gapAmount: gap };
           summary.gaps++;
           problems.push({
-            kind: "gap", source: src, id: t.id, prevId: prev.id,
+            kind: "gap", account: src, id: t.id, prevId: prev.id,
             date: t.date, time: t.time || "",
             prevDate: prev.date, prevTime: prev.time || "",
             gapAmount: gap,

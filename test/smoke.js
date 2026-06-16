@@ -17,6 +17,7 @@ function load(rel) {
 
 ["js/lib/hash.js", "js/lib/encoding.js", "js/core/aggregate.js", "js/core/balance.js",
  "js/adapters/registry.js", "js/adapters/mg-account.js", "js/adapters/toss-paste.js",
+ "js/core/categories.js", "js/core/perspectives.js",
  "js/core/store.js"].forEach(load);
 
 const HL = sandbox.HL;
@@ -178,6 +179,68 @@ function check(name, cond) {
   const tossPrompt = HL.adapters.get("toss").promptText;
   check("위쪽 날짜 구분선을 따르라는 규칙 포함", tossPrompt.indexOf("위쪽") !== -1 && tossPrompt.indexOf("날짜 구분선") !== -1);
   check("아래쪽 날짜를 쓰지 말라는 경고 포함", tossPrompt.indexOf("아래쪽") !== -1);
+
+  console.log("\n[13] 계좌(account) 기준: 토스+CSV 같은 계좌를 한 체인으로 병합 검증");
+  // 같은 새마을금고 계좌를 CSV(급여)와 토스 캡쳐(커피)로 나눠 넣어도 account가 같으면 한 체인.
+  const mgRows = HL.encoding.parseCsv(["거래일시,적요,출금금액,입금금액,잔액",
+    "2026-07-01 09:00:00,급여,,1000000,1000000"].join("\n"));
+  const mgTx = mg._internal.rowsToTransactions(mgRows, "주계좌");
+  check("account 라벨 스탬프", mgTx[0].account === "주계좌");
+  // account를 주면 dedupKey가 source-폴백과 달라진다(계좌가 키에 반영됨)
+  const mgNoAcct = mg._internal.rowsToTransactions(mgRows);
+  check("account가 dedupKey에 반영(미지정과 다름)", mgTx[0].dedupKey !== mgNoAcct[0].dedupKey);
+  check("account 미지정은 기존대로 source 폴백(키 안정)", mgNoAcct[0].account === undefined);
+
+  const tossAcct = await toss.parseText(
+    '[{"date":"2026-07-02","time":"10:00","amount":-3000,"description":"커피","balance":997000}]', { account: "주계좌" });
+  check("토스도 account 스탬프", tossAcct[0].account === "주계좌");
+
+  const merged = [
+    Object.assign({ id: "m1" }, mgTx[0]),
+    Object.assign({ id: "t1" }, tossAcct[0]),
+  ];
+  const repM = HL.balance.validate(merged);
+  check("같은 계좌라 한 체인: CSV가 기준점", repM.annotations.m1.status === "start");
+  check("토스 거래가 잔액으로 연속 확정(ok)", repM.annotations.t1.status === "ok");
+  check("누락/문제 없음", repM.summary.gaps === 0);
+
+  console.log("\n[14] 분류: 정규화 기본값 + 태그 보존");
+  _db.length = 0;
+  const nr = await HL.store.importTransactions([
+    { date: "2026-06-01", amount: -5000, description: "스벅", dedupKey: "k1" },
+  ]);
+  check("import 1건", nr.added === 1);
+  const norm = (await HL.idb.getAll())[0];
+  check("tags 기본 []", Array.isArray(norm.tags) && norm.tags.length === 0);
+  check("tagStatus 기본 none", norm.tagStatus === "none");
+
+  console.log("\n[15] 분류 프롬프트 생성 + 결과 파싱");
+  const prompt = HL.categories.buildPrompt([{ id: "abc", date: "2026-06-01", amount: -5000, description: "스타벅스" }]);
+  check("허용 태그가 프롬프트에 포함", prompt.indexOf("식비") !== -1 && prompt.indexOf("부동산") !== -1);
+  check("입력 id가 payload에 포함", prompt.indexOf('"id":"abc"') !== -1);
+
+  const known = new Set(["abc", "def"]);
+  const parsed = HL.categories.parseResult(
+    '```json\n[{"id":"abc","tags":["식비","없는태그"],"confidence":0.9,"status":"ok"},' +
+    '{"id":"def","tags":[],"confidence":0.1,"status":"skip"},' +
+    '{"id":"zzz","tags":["식비"],"status":"ok"}]\n```', known);
+  check("코드펜스 벗기고 파싱", parsed.error === null);
+  check("모르는 id(zzz) 1건 무시", parsed.unknown === 1 && parsed.matched === 2);
+  check("허용 외 태그 제거", parsed.items[0].tags.length === 1 && parsed.items[0].tags[0] === "식비");
+  check("status skip 또는 빈 태그 → skip", parsed.items[1].skip === true);
+
+  console.log("\n[16] 관점(perspective) 필터");
+  const pTx = [
+    { amount: -8000, type: "expense", tags: [] },                    // 생활
+    { amount: -300000000, type: "expense", tags: ["부동산"] },       // 부동산/큰 자금
+    { amount: -5000000, type: "expense", tags: [] },                 // 금액만으로 큰 자금
+    { amount: -1000000, type: "transfer", excludeFromTotal: true, tags: [] }, // 이체
+  ];
+  check("전체 = 4건", HL.perspectives.apply(pTx, "all").length === 4);
+  check("생활 현금흐름 = 1건(자잘한 것만)", HL.perspectives.apply(pTx, "daily").length === 1);
+  check("큰 자금이동 = 3건", HL.perspectives.apply(pTx, "big").length === 3);
+  check("부동산 = 1건(태그 기준)", HL.perspectives.apply(pTx, "realestate").length === 1);
+  check("알 수 없는 관점은 전체로 폴백", HL.perspectives.apply(pTx, "nope").length === 4);
 
   console.log("\n결과: " + pass + " passed, " + fail + " failed\n");
   process.exit(fail ? 1 : 0);

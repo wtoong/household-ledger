@@ -19,6 +19,7 @@
   <nav class="tabs">
     <button class="tab-btn active" data-tab="dashboard">대시보드</button>
     <button class="tab-btn" data-tab="transactions">거래내역</button>
+    <button class="tab-btn" data-tab="categorize">분류</button>
     <button class="tab-btn" data-tab="import">가져오기</button>
     <button class="tab-btn" data-tab="data">데이터</button>
   </nav>
@@ -26,6 +27,8 @@
   <main>
     <!-- 대시보드 -->
     <section id="view-dashboard" class="view active">
+      <div id="dash-perspective" class="perspective-bar"></div>
+
       <div class="month-nav">
         <button id="dash-prev" class="ghost-btn" aria-label="이전 달">‹</button>
         <span id="dash-month-label" class="month-label">—</span>
@@ -54,6 +57,7 @@
 
     <!-- 거래내역 -->
     <section id="view-transactions" class="view">
+      <div id="tx-perspective" class="perspective-bar"></div>
       <div class="card">
         <div class="filters">
           <label>시작 <input type="date" id="tx-from" /></label>
@@ -85,12 +89,59 @@
       </div>
     </section>
 
+    <!-- 분류 -->
+    <section id="view-categorize" class="view">
+      <div class="card">
+        <h2 class="card-title">분류 현황</h2>
+        <div id="cat-summary" class="net-sub" style="justify-content:flex-start"></div>
+        <p class="muted small">태그는 거래마다 한 번만 매기면 됩니다. 관점(대시보드·거래내역 상단)은 이 태그 위에 얹히는 필터예요.</p>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">① 미분류 추출 → 본인 LLM에 위임</h2>
+        <p class="muted small">미분류 거래를 모아 프롬프트를 만듭니다. 복사해 본인 LLM(Gemini/ChatGPT/Claude 등)에 넣고, 받은 JSON을 ②에 붙여넣으세요. 앱은 외부로 아무것도 보내지 않습니다.</p>
+        <button id="cat-extract-btn" class="primary-btn">미분류 추출</button>
+        <div id="cat-extract-msg" class="import-result" style="display:none"></div>
+        <div id="cat-prompt-zone" style="display:none">
+          <div class="prompt-head">
+            <span class="muted small">프롬프트 + 데이터(복사해서 LLM에)</span>
+            <button id="cat-copy-prompt" class="ghost-btn">복사</button>
+          </div>
+          <textarea id="cat-prompt" class="prompt-box" readonly rows="8"></textarea>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">② 결과 붙여넣기 → 검토</h2>
+        <textarea id="cat-input" class="paste-box" rows="6" placeholder='[{"id":"...","tags":["식비"],"confidence":0.95,"status":"ok"}]'></textarea>
+        <div class="btn-row">
+          <button id="cat-parse-btn" class="primary-btn">결과 분석</button>
+          <button id="cat-manual-btn" class="ghost-btn">미분류·보류 직접 분류</button>
+        </div>
+        <div id="cat-parse-msg" class="import-result" style="display:none"></div>
+      </div>
+
+      <div id="cat-review" class="card" style="display:none">
+        <div class="cat-review-head">
+          <h2 class="card-title" style="margin:0">검토 — 칩을 눌러 태그 가감, 보류 표시</h2>
+          <label class="muted small cat-only"><input type="checkbox" id="cat-only-review" /> 검토 필요만</label>
+        </div>
+        <div id="cat-review-list" class="cat-review-list"></div>
+        <button id="cat-apply" class="primary-btn" style="margin-top:12px">적용</button>
+        <p class="muted small">태그를 고른 행은 <b>확정</b>, 보류 표시한 행은 <b>보류</b>(다시 LLM에 안 보냄), 둘 다 아니면 <b>미분류</b>로 남습니다.</p>
+      </div>
+    </section>
+
     <!-- 가져오기 -->
     <section id="view-import" class="view">
       <div class="card">
         <h2 class="card-title">데이터 가져오기</h2>
         <label class="block">소스
           <select id="import-source"></select>
+        </label>
+        <label class="block">계좌 <span class="muted small">(잔액·현금흐름 단위. 토스가 같은 새마을금고 계좌 이력이면 같은 라벨로 묶으세요)</span>
+          <input type="text" id="import-account" list="account-labels" placeholder="예: 새마을금고 주계좌 (비우면 소스명으로 묶임)" autocomplete="off" />
+          <datalist id="account-labels"></datalist>
         </label>
         <p id="import-help" class="muted small"></p>
 
@@ -155,6 +206,8 @@
   <script src="js/core/store.js"></script>
   <script src="js/core/balance.js"></script>
   <script src="js/core/aggregate.js"></script>
+  <script src="js/core/categories.js"></script>
+  <script src="js/core/perspectives.js"></script>
   <!-- adapters -->
   <script src="js/adapters/registry.js"></script>
   <script src="js/adapters/mg-account.js"></script>
@@ -163,6 +216,7 @@
   <script src="js/ui/charts.js"></script>
   <script src="js/ui/dashboard.js"></script>
   <script src="js/ui/transactions.js"></script>
+  <script src="js/ui/categorize.js"></script>
   <script src="js/ui/import.js"></script>
   <script src="js/ui/data.js"></script>
   <!-- bootstrap -->

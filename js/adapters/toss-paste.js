@@ -40,8 +40,9 @@
     return isNaN(n) ? NaN : n;
   }
 
-  // 입력 JSON 텍스트 → 표준 거래 배열
-  function parseText(text) {
+  // 입력 JSON 텍스트 → 표준 거래 배열. opts.account 로 어느 계좌 이력인지 지정.
+  function parseText(text, opts) {
+    const account = opts && opts.account ? opts.account : undefined;
     return new Promise(function (resolve, reject) {
       let data;
       let raw = String(text || "").trim();
@@ -67,7 +68,9 @@
         const time = mgInternal.toTime(r.time) || mgInternal.toTime(r.date) || undefined;
         const description = String(r.description == null ? "" : r.description).trim();
         const balance = (r.balance == null || r.balance === "") ? undefined : coerceNumber(r.balance);
-        const keyParts = [SOURCE, date, time || "", amount, description, (balance == null || isNaN(balance)) ? "" : balance];
+        // dedupKey 기준은 '계좌(account)'. 지정 안 하면 SOURCE로 폴백(기존 멱등성 유지).
+        const acct = account || SOURCE;
+        const keyParts = [acct, date, time || "", amount, description, (balance == null || isNaN(balance)) ? "" : balance];
         out.push({
           date: date,
           time: time,
@@ -75,6 +78,7 @@
           type: amount >= 0 ? "income" : "expense",
           description: description,
           source: SOURCE,
+          account: account || undefined,
           balance: (balance == null || isNaN(balance)) ? undefined : balance,
           dedupKey: HL.hash.cyrb53(keyParts.join("|")),
         });

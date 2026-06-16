@@ -14,6 +14,9 @@
   let _report = { annotations: {}, orderRank: {}, problems: [], summary: {} };
 
   function applyFilters() {
+    // 관점 선택기는 매 렌더마다 현재 상태로 다시 그려 다른 탭에서 바꾼 값도 반영한다.
+    HL.perspectives.renderSelector(el("tx-perspective"), HL.state.perspective, applyFilters);
+
     const from = el("tx-from").value;
     const to = el("tx-to").value;
     const q = el("tx-search").value.trim().toLowerCase();
@@ -24,7 +27,9 @@
     _report = HL.balance.validate(HL.state.transactions);
     const ann = _report.annotations;
 
-    _filtered = HL.state.transactions.filter(function (t) {
+    // 관점(저장된 필터)을 먼저 적용한 뒤, 기간/검색/구분 필터를 합성한다.
+    const persp = HL.perspectives.apply(HL.state.transactions, HL.state.perspective);
+    _filtered = persp.filter(function (t) {
       if (from && t.date < from) return false;
       if (to && t.date > to) return false;
       if (type === "income" && t.amount < 0) return false;
@@ -116,15 +121,19 @@
     slice.forEach(function (t) {
       const tr = document.createElement("tr");
       const sign = t.amount >= 0 ? "pos" : "neg";
-      const srcLabel = HL.fmt.sourceLabel(t.source);
+      // 계좌 라벨이 있으면 그걸 보여주고(잔액·현금흐름 단위), 없으면 소스명.
+      const srcLabel = t.account ? t.account : HL.fmt.sourceLabel(t.source);
       const timeLabel = t.time ? '<span class="td-time">' + HL.fmt.esc(t.time.slice(0, 5)) + "</span>" : "";
+      const tagsHtml = (t.tags || []).map(function (g) {
+        return '<span class="tag-pill">' + HL.fmt.esc(g) + "</span>";
+      }).join("");
       const bal = typeof t.balance === "number" ? HL.fmt.won(t.balance) : "";
       const a = _report.annotations[t.id];
       if (a && a.status === "gap") tr.className = "row-gap";
       tr.innerHTML =
         '<td class="td-date">' + HL.fmt.esc(t.date) + timeLabel + "</td>" +
         '<td class="td-desc">' + HL.fmt.esc(t.description || "(적요 없음)") +
-          '<span class="src-tag">' + HL.fmt.esc(srcLabel) + "</span></td>" +
+          '<span class="src-tag">' + HL.fmt.esc(srcLabel) + "</span>" + tagsHtml + "</td>" +
         '<td class="td-amt ' + sign + '">' + HL.fmt.signedWon(t.amount) + "</td>" +
         '<td class="td-bal">' + bal + statusBadge(t) + "</td>" +
         '<td class="td-act"><button type="button" class="row-del" data-id="' + HL.fmt.esc(t.id) +

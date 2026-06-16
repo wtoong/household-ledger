@@ -13,8 +13,15 @@
       type: t.type || (t.amount >= 0 ? "income" : "expense"),
       description: t.description || "",
       source: t.source,
+      account: t.account || undefined, // 잔액·현금흐름의 단위(계좌 라벨). 없으면 source가 계좌 역할.
       dedupKey: t.dedupKey,
       importedAt: new Date().toISOString(),
+      // 관점(perspective)용 태그 + 분류 상태기계.
+      //   tagStatus: none(미시도) → proposed(LLM제안·검토대기) → confirmed(확정) | skipped(보류)
+      //   skipped/confirmed/proposed는 재추출 대상에서 제외(none만 다시 LLM에 보냄).
+      tags: Array.isArray(t.tags) ? t.tags.slice() : [],
+      tagStatus: t.tagStatus || "none",
+      tagSource: t.tagSource || undefined, // llm | manual | rule
       // Phase 2+ 자리만 잡아둠
       category: t.category,
       installment: t.installment,
@@ -52,6 +59,13 @@
     return HL.idb.remove(id);
   }
 
+  // 이미 저장된 거래(전체 레코드)를 갱신 저장. putMany는 id(keyPath)로 upsert하므로 그대로 덮어쓴다.
+  // 태그/분류 상태 변경 등 부분 수정 시, 호출부에서 메모리의 전체 레코드를 수정해 넘긴다.
+  function updateMany(txs) {
+    if (!txs || !txs.length) return Promise.resolve(0);
+    return HL.idb.putMany(txs);
+  }
+
   function clear() {
     return HL.idb.clear();
   }
@@ -68,10 +82,13 @@
   }
 
   function exportCSV(transactions) {
-    const cols = ["date", "time", "amount", "type", "description", "source", "balance", "dedupKey", "importedAt"];
+    const cols = ["date", "time", "amount", "type", "description", "source", "account", "tags", "tagStatus", "balance", "dedupKey", "importedAt"];
     const lines = [cols.join(",")];
     transactions.forEach(function (t) {
-      lines.push(cols.map(function (c) { return csvEscape(t[c]); }).join(","));
+      lines.push(cols.map(function (c) {
+        if (c === "tags") return csvEscape((t.tags || []).join(";")); // 배열은 ; 로 합쳐 한 칸에
+        return csvEscape(t[c]);
+      }).join(","));
     });
     // 엑셀에서 한글 깨짐 방지용 UTF-8 BOM
     return "﻿" + lines.join("\r\n");
@@ -81,6 +98,7 @@
     importTransactions: importTransactions,
     getAll: getAll,
     remove: remove,
+    updateMany: updateMany,
     clear: clear,
     exportJSON: exportJSON,
     exportCSV: exportCSV,
