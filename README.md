@@ -31,7 +31,25 @@ npm run serve         # http://localhost:8080
 - **멱등 임포트** — 같은 기간을 다시 올려도 중복 적재되지 않음(`dedupKey`). 신규/스킵 건수 표시.
 - **대시보드** — 선택한 달의 순현금흐름을 크게 강조 + 월별 수입/지출 막대 차트(차트 라이브러리 없이 SVG).
 - **거래내역** — 기간·텍스트(적요)·수입/지출 필터, 최신순, 더보기.
+- **잔액 검증(연속성 체크)** — 거래에 `거래후잔액`이 함께 들어오면 계좌별로 시간순 잔액 체인을 만들어 검증합니다. 아래 "잔액 검증" 참고.
 - **데이터 관리** — JSON/CSV 내보내기(데이터 소유권), 전체 초기화.
+
+## 잔액 검증 (연속성 체크 + 시간순 정렬)
+
+은행/토스 내역에는 보통 **거래후잔액**이 같이 들어옵니다. 잔액은 계좌 단위 누적값이므로, **같은 계좌(`source`)** 끼리 시간 오름차순으로 줄을 세우면 다음이 성립해야 합니다.
+
+```
+직전 잔액 + 현재 금액 == 현재 잔액
+```
+
+- **맞물림(✓ ok)** — 두 거래 사이에 **누락된 거래가 없음이 확정**됩니다.
+- **어긋남(⚠ gap)** — 그 차액만큼의 거래가 **누락된 것으로 추정**됩니다. 추정 누락액 `= (현재잔액 − 현재금액) − 직전잔액` (양수면 입금, 음수면 출금). **시각은 알 수 없으므로 "확인필요"** 로 표시합니다.
+- **기준점(● start)** — 계좌에서 검증된 가장 이른 거래(직전이 없어 비교 대상 없음).
+- **검증 불가(? no-balance)** — 잔액 정보가 없는 거래.
+
+**같은 시각이 여러 건**이라 순서가 모호할 땐, 잔액 체인이 들어맞는 **순열을 찾아 순서를 확정**합니다(예: 같은 분에 결제 두 건이 찍혀도 잔액으로 선후가 정해짐). 시각이 서로 다르면 순서는 시각으로 이미 확정되므로 검증은 누락 탐지에만 쓰입니다.
+
+거래내역 상단에 검증 요약 배너가 뜨고, 각 행의 잔액 옆에 상태 배지가 붙습니다. **`검증 문제만`** 체크박스로 누락 추정·검증 불가 행만 모아 볼 수 있습니다. (검증은 필터와 무관하게 항상 전체 거래 기준으로 계산합니다.)
 
 ## 토스 캡쳐 워크플로
 
@@ -51,6 +69,7 @@ npm run serve         # http://localhost:8080
 interface Transaction {
   id: string;            // 내부 고유 ID
   date: string;          // 'YYYY-MM-DD' (출금/입금 시점, 현금주의)
+  time?: string;         // 'HH:MM(:SS)' 24시간 (있으면 같은 날 정렬·잔액 검증 정확도↑)
   amount: number;        // 양수=수입, 음수=지출
   type: 'income' | 'expense' | 'transfer';
   description: string;   // 적요/가맹점
@@ -74,7 +93,7 @@ css/styles.css
 vendor/xlsx.full.min.js  # SheetJS (XLSX 파싱, 오프라인용 동봉)
 js/
   lib/   hash.js · encoding.js(CSV+인코딩) · idb.js(IndexedDB 래퍼)
-  core/  store.js(멱등 저장/내보내기) · aggregate.js(월별 집계)
+  core/  store.js(멱등 저장/내보내기) · balance.js(잔액 검증/시간순) · aggregate.js(월별 집계)
   adapters/ registry.js · mg-account.js · toss-paste.js
   ui/    charts.js · dashboard.js · transactions.js · import.js · data.js
   app.js  # 부트스트랩(상태/탭/refresh/포맷)
@@ -101,7 +120,7 @@ HL.adapters.register({
 ## 테스트
 
 ```bash
-npm test    # node test/smoke.js — 파싱/멱등/집계/토스 JSON 로직 검증
+npm test    # node test/smoke.js — 파싱/멱등/집계/토스 JSON/잔액 검증 로직 검증
 ```
 
 ## Roadmap (Phase 2+)

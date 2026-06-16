@@ -15,7 +15,7 @@ function load(rel) {
   vm.runInContext(code, sandbox, { filename: rel });
 }
 
-["js/lib/hash.js", "js/lib/encoding.js", "js/core/aggregate.js",
+["js/lib/hash.js", "js/lib/encoding.js", "js/core/aggregate.js", "js/core/balance.js",
  "js/adapters/registry.js", "js/adapters/mg-account.js", "js/adapters/toss-paste.js",
  "js/core/store.js"].forEach(load);
 
@@ -122,6 +122,41 @@ function check(name, cond) {
   ].slice().sort((a, b) => { const ka = dtKey(a), kb = dtKey(b); return ka === kb ? 0 : (ka < kb ? 1 : -1); });
   check("다음날이 맨 위", mixed[0].date === "2026-05-23");
   check("같은 날은 늦은 시각이 먼저", mixed[1].time === "23:10:00" && mixed[2].time === "08:00:00");
+
+  console.log("\n[8] 잔액 검증: 연속성 확정 + 누락 추정");
+  // 같은 계좌(source) 시간순 체인. 두번째 거래의 잔액이 한 칸 어긋나 누락 추정이 떠야 한다.
+  const chain = [
+    { id: "a", source: "mg", date: "2026-06-01", time: "09:00:00", amount: 100000, balance: 100000 },
+    { id: "b", source: "mg", date: "2026-06-02", time: "10:00:00", amount: -3000, balance: 97000 },   // ok: 100000-3000
+    { id: "c", source: "mg", date: "2026-06-03", time: "11:00:00", amount: -5000, balance: 80000 },   // gap: 97000-5000=92000≠80000
+    { id: "d", source: "mg", date: "2026-06-04", time: "12:00:00", amount: -2000, balance: 78000 },   // ok: 80000-2000
+  ];
+  const rep = HL.balance.validate(chain);
+  check("첫 거래는 기준점(start)", rep.annotations.a.status === "start");
+  check("연속 일치 거래는 ok", rep.annotations.b.status === "ok" && rep.annotations.d.status === "ok");
+  check("어긋난 거래는 gap", rep.annotations.c.status === "gap");
+  check("누락 추정액 -12,000 (출금)", rep.annotations.c.gapAmount === -12000);
+  check("문제 1곳 집계", rep.summary.gaps === 1 && rep.problems.filter((p) => p.kind === "gap").length === 1);
+
+  console.log("\n[9] 같은 시각 묶음: 잔액으로 순서 보정");
+  // 동일 날짜·시각, 잔액만으로 올바른 순서를 찾아야 한다(들어온 순서는 거꾸로).
+  const sameTime = [
+    { id: "x", source: "mg", date: "2026-06-10", time: "14:00:00", amount: -12000, balance: 1530000 }, // 나중
+    { id: "y", source: "mg", date: "2026-06-10", time: "14:00:00", amount: 2500000, balance: 1542000 }, // 먼저
+  ];
+  const rep2 = HL.balance.validate(sameTime);
+  check("잔액 체인이 맞는 순서로 rank 확정(y가 먼저)", rep2.orderRank.y < rep2.orderRank.x);
+  check("보정 후 x는 연속 ok", rep2.annotations.x.status === "ok");
+  check("순서 보정 1곳 기록", rep2.summary.reordered === 1);
+
+  console.log("\n[10] 잔액 없는 건 + 계좌 분리");
+  const mixed2 = [
+    { id: "p", source: "mg", date: "2026-06-01", amount: -1000 },                       // 잔액 없음
+    { id: "q", source: "toss", date: "2026-06-01", amount: -1000, balance: 5000 },       // 다른 계좌, 단독
+  ];
+  const rep3 = HL.balance.validate(mixed2);
+  check("잔액 없는 건 no-balance", rep3.annotations.p.status === "no-balance" && rep3.summary.noBalance === 1);
+  check("다른 계좌 단독은 start", rep3.annotations.q.status === "start");
 
   console.log("\n결과: " + pass + " passed, " + fail + " failed\n");
   process.exit(fail ? 1 : 0);

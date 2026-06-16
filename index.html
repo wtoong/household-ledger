@@ -68,8 +68,10 @@
               <option value="expense">지출</option>
             </select>
           </label>
+          <label class="check"><input type="checkbox" id="tx-issues-only" /> 검증 문제만</label>
           <button id="tx-reset-filter" class="ghost-btn">초기화</button>
         </div>
+        <div id="tx-validation" class="tx-validation" style="display:none"></div>
         <div id="tx-summary" class="tx-summary muted"></div>
         <div class="table-scroll">
           <table class="tx-table">
@@ -151,6 +153,7 @@
   <script src="js/lib/idb.js"></script>
   <!-- core -->
   <script src="js/core/store.js"></script>
+  <script src="js/core/balance.js"></script>
   <script src="js/core/aggregate.js"></script>
   <!-- adapters -->
   <script src="js/adapters/registry.js"></script>
