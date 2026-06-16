@@ -13,6 +13,7 @@
       type: t.type || (t.amount >= 0 ? "income" : "expense"),
       description: t.description || "",
       source: t.source,
+      account: t.account || undefined, // 잔액·현금흐름의 단위(계좌 라벨). 없으면 source가 계좌 역할.
       dedupKey: t.dedupKey,
       importedAt: new Date().toISOString(),
       // Phase 2+ 자리만 잡아둠
@@ -64,7 +65,7 @@
   }
 
   function exportCSV(transactions) {
-    const cols = ["date", "time", "amount", "type", "description", "source", "balance", "dedupKey", "importedAt"];
+    const cols = ["date", "time", "amount", "type", "description", "source", "account", "balance", "dedupKey", "importedAt"];
     const lines = [cols.join(",")];
     transactions.forEach(function (t) {
       lines.push(cols.map(function (c) { return csvEscape(t[c]); }).join(","));
