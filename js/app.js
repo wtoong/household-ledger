@@ -23,7 +23,12 @@
   };
 
   // --- 상태 ---
-  HL.state = { transactions: [], selectedMonth: null, perspective: "all" };
+  HL.state = {
+    transactions: [], perspective: "all",
+    selectedMonth: null,                 // 하위 호환(= rangeEnd)
+    monthWindowEnd: null,                // 막대 차트 12개월 창의 끝(YYYY-MM)
+    rangeStart: null, rangeEnd: null,    // 선택 기간(YYYY-MM)
+  };
 
   const views = {
     dashboard: HL.dashboard,

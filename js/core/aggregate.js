@@ -6,6 +6,30 @@
     return (isoDate || "").slice(0, 7); // YYYY-MM
   }
 
+  // 'YYYY-MM'에 n개월을 더한 키. (n은 음수 가능)
+  function addMonths(key, n) {
+    const parts = (key || "").split("-");
+    const idx = Number(parts[0]) * 12 + (Number(parts[1]) - 1) + (n || 0);
+    const y = Math.floor(idx / 12);
+    const m = idx - y * 12 + 1;
+    return y + "-" + (m < 10 ? "0" + m : m);
+  }
+
+  // 두 'YYYY-MM' 사이의 개월 차(to - from). from <= to면 0 이상.
+  function monthDiff(fromKey, toKey) {
+    const a = fromKey.split("-"), b = toKey.split("-");
+    return (Number(b[0]) * 12 + Number(b[1])) - (Number(a[0]) * 12 + Number(a[1]));
+  }
+
+  // from~to(포함) 연속 월 키 배열. 데이터가 없는 달도 채워 연속성을 보장.
+  function monthRange(fromKey, toKey) {
+    const out = [];
+    if (!fromKey || !toKey || fromKey > toKey) return out;
+    let k = fromKey;
+    for (let i = 0; i < 1200 && k <= toKey; i++) { out.push(k); k = addMonths(k, 1); }
+    return out;
+  }
+
   function isCounted(t) {
     if (t.excludeFromTotal === true) return false;
     if (t.type === "transfer") return false;
@@ -37,11 +61,24 @@
     return { month: month, income: 0, expense: 0, net: 0, count: 0 };
   }
 
+  // fromMonth~toMonth(포함, 'YYYY-MM') 구간의 합산 수입/지출/순액/건수.
+  function totalsForRange(transactions, fromMonth, toMonth) {
+    const acc = { from: fromMonth, to: toMonth, income: 0, expense: 0, net: 0, count: 0 };
+    monthly(transactions).forEach(function (m) {
+      if (m.month < fromMonth || m.month > toMonth) return;
+      acc.income += m.income; acc.expense += m.expense;
+      acc.net += m.net; acc.count += m.count;
+    });
+    return acc;
+  }
+
   // 잔액 추이: balance가 있는 거래만 사용해 날짜별 "합산 잔액"을 만든다.
   // 소스(계좌)별로 가장 최근에 알려진 잔액을 들고 있다가, 각 시점에 모두 더해 총 보유 잔액을 낸다.
   // (단일 계좌면 그 계좌 잔액 그대로, 여러 계좌면 계좌 합계의 시계열)
+  // fromMonth/toMonth('YYYY-MM')를 주면 그 구간의 시점만 남긴다. 합산 잔액은
+  // 전체 거래로 계산한 뒤 잘라내므로(여러 계좌의 직전 잔액이 보존됨) 절대값이 정확하다.
   // 반환: [{date:'YYYY-MM-DD', balance}] 날짜 오름차순
-  function balanceSeries(transactions) {
+  function balanceSeries(transactions, fromMonth, toMonth) {
     const withBal = transactions.filter(function (t) {
       return typeof t.balance === "number" && t.date;
     });
@@ -58,16 +95,28 @@
       for (const k in lastBySource) total += lastBySource[k];
       byDate.set(t.date, total); // 같은 날 여러 건이면 마지막 값으로 갱신
     });
-    const out = [];
+    let out = [];
     byDate.forEach(function (bal, date) { out.push({ date: date, balance: bal }); });
     out.sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+    if (fromMonth || toMonth) {
+      out = out.filter(function (p) {
+        const mk = p.date.slice(0, 7);
+        if (fromMonth && mk < fromMonth) return false;
+        if (toMonth && mk > toMonth) return false;
+        return true;
+      });
+    }
     return out;
   }
 
   HL.aggregate = {
     monthly: monthly,
     totalsForMonth: totalsForMonth,
+    totalsForRange: totalsForRange,
     monthKey: monthKey,
+    addMonths: addMonths,
+    monthDiff: monthDiff,
+    monthRange: monthRange,
     balanceSeries: balanceSeries,
   };
 })();

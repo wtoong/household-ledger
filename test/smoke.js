@@ -130,6 +130,37 @@ function check(name, cond) {
   check("날짜 오름차순", bs[0].date === "2026-06-01" && bs[2].date === "2026-06-03");
   check("balance 없으면 빈 배열", HL.aggregate.balanceSeries([{ date: "2026-06-01", amount: 1 }]).length === 0);
 
+  console.log("\n[7-1] 월 산술/범위 유틸 + 기간 잔액 추이/합계");
+  check("addMonths 다음달", HL.aggregate.addMonths("2026-06", 1) === "2026-07");
+  check("addMonths 연 넘김(+)", HL.aggregate.addMonths("2026-11", 3) === "2027-02");
+  check("addMonths 연 넘김(-)", HL.aggregate.addMonths("2026-01", -2) === "2025-11");
+  check("monthDiff", HL.aggregate.monthDiff("2026-01", "2026-06") === 5 && HL.aggregate.monthDiff("2026-06", "2026-01") === -5);
+  const mr = HL.aggregate.monthRange("2025-11", "2026-02");
+  check("monthRange 연속 4개월", mr.length === 4 && mr[0] === "2025-11" && mr[3] === "2026-02");
+  check("monthRange 역순이면 빈 배열", HL.aggregate.monthRange("2026-06", "2026-01").length === 0);
+  // 기간(월) 필터: 6월만 잘라내도 합산 절대값은 유지(다른 계좌의 5월 잔액 보존)
+  const balSpan = [
+    { date: "2026-05-20", amount: -5000, source: "toss", balance: 500 },     // 5월(필터 밖)
+    { date: "2026-06-02", amount: -3000, source: "mg-account", balance: 1000 },
+    { date: "2026-06-03", amount: 200, source: "mg-account", balance: 1200 },
+  ];
+  const bsRange = HL.aggregate.balanceSeries(balSpan, "2026-06", "2026-06");
+  check("기간 필터: 6월 2시점만 남음", bsRange.length === 2 && bsRange[0].date === "2026-06-02");
+  check("기간 필터: 합산값 보존(toss500+mg1000=1500)", bsRange[0].balance === 1500);
+  check("기간 밖(7월)이면 빈 배열", HL.aggregate.balanceSeries(balSpan, "2026-07", "2026-07").length === 0);
+  // 기간 합계
+  const rngSample = [
+    { date: "2026-04-10", amount: -10000, type: "expense" },
+    { date: "2026-05-10", amount: 200000, type: "income" },
+    { date: "2026-05-12", amount: -5000, type: "expense" },
+    { date: "2026-06-10", amount: -30000, type: "expense" },
+  ];
+  const rt = HL.aggregate.totalsForRange(rngSample, "2026-05", "2026-06");
+  check("totalsForRange 수입 200,000", rt.income === 200000);
+  check("totalsForRange 지출 35,000(5월12+6월30k)", rt.expense === 35000);
+  check("totalsForRange 순액 165,000", rt.net === 165000);
+  check("totalsForRange 건수 3(4월 제외)", rt.count === 3);
+
   console.log("\n[6] CSV 내보내기 round-trip 헤더");
   const csvOut = HL.store.exportCSV(_db);
   check("CSV 헤더 포함(time 컬럼)", csvOut.indexOf("date,time,amount,type,description,source") !== -1);
