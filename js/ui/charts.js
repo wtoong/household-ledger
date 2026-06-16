@@ -165,7 +165,9 @@
     container.appendChild(legend);
   }
 
-  // 잔액 변동 추이 선형 차트. series: [{date:'YYYY-MM-DD', balance}]
+  // 잔액 변동 추이 선형 차트. series: [{date:'YYYY-MM-DD', time?, balance}]
+  // 한 점 = 한 거래 시점이라 같은 날 여러 건도 모두 표시된다. x축은 거래 순서(등간격)라
+  // 점이 아무리 촘촘해도 겹치지 않아, 길게 봐도 당일 등락이 유실되지 않는다.
   // opts.onPick(fromDate, toDate) 를 주면 누르면 그날(from===to), 좌우로 그으면 연속 날짜 범위.
   function renderLine(container, series, opts) {
     opts = opts || {};
@@ -186,9 +188,6 @@
     const plotW = W - padL - padR;
     const plotH = H - padT - padB;
 
-    const xs = series.map(function (d) { return new Date(d.date + "T00:00:00").getTime(); });
-    const minX = xs[0], maxX = xs[xs.length - 1];
-    const spanX = Math.max(1, maxX - minX);
     const vals = series.map(function (d) { return d.balance; });
     const dataMin = Math.min.apply(null, vals);
     const dataMax = Math.max.apply(null, vals);
@@ -199,7 +198,9 @@
     lo -= padY; hi += padY;
     const spanY = hi - lo;
 
-    function X(t) { return padL + ((t - minX) / spanX) * plotW; }
+    // x는 거래 순서로 등간격 배치(시각이 아니라 인덱스 기준). 같은 날 여러 점도 따로 보인다.
+    const stepX = series.length > 1 ? plotW / (series.length - 1) : 0;
+    function X(i) { return padL + stepX * i; }
     function Y(v) { return padT + plotH - ((v - lo) / spanY) * plotH; }
 
     const NS = "http://www.w3.org/2000/svg";
@@ -227,12 +228,12 @@
     // 면적 + 선 경로
     let dLine = "";
     series.forEach(function (d, i) {
-      dLine += (i === 0 ? "M" : "L") + X(xs[i]).toFixed(1) + " " + Y(d.balance).toFixed(1) + " ";
+      dLine += (i === 0 ? "M" : "L") + X(i).toFixed(1) + " " + Y(d.balance).toFixed(1) + " ";
     });
     const baseY = padT + plotH;
     const area = document.createElementNS(NS, "path");
-    area.setAttribute("d", "M" + X(xs[0]).toFixed(1) + " " + baseY + " " +
-      dLine.replace(/^M/, "L") + "L" + X(xs[xs.length - 1]).toFixed(1) + " " + baseY + " Z");
+    area.setAttribute("d", "M" + X(0).toFixed(1) + " " + baseY + " " +
+      dLine.replace(/^M/, "L") + "L" + X(series.length - 1).toFixed(1) + " " + baseY + " Z");
     area.setAttribute("class", "chart-area");
     svg.appendChild(area);
 
@@ -248,7 +249,7 @@
       if (month !== prevMonth) {
         prevMonth = month;
         const tx = document.createElementNS(NS, "text");
-        tx.setAttribute("x", X(xs[i]));
+        tx.setAttribute("x", X(i));
         tx.setAttribute("y", H - 8);
         tx.setAttribute("text-anchor", "middle");
         tx.setAttribute("class", "chart-xlabel");
@@ -258,13 +259,17 @@
     });
 
     // 각 시점에 작은 점 표시.
+    function pointLabel(d) {
+      const when = d.date + (d.time ? " " + d.time.slice(0, 5) : "");
+      return when + " · " + Math.round(d.balance).toLocaleString("ko-KR") + "원";
+    }
     series.forEach(function (d, i) {
       const pt = document.createElementNS(NS, "circle");
-      pt.setAttribute("cx", X(xs[i])); pt.setAttribute("cy", Y(d.balance));
+      pt.setAttribute("cx", X(i)); pt.setAttribute("cy", Y(d.balance));
       pt.setAttribute("r", "2.2");
       pt.setAttribute("class", "chart-pt");
       const ht = document.createElementNS(NS, "title");
-      ht.textContent = d.date + " · " + Math.round(d.balance).toLocaleString("ko-KR") + "원";
+      ht.textContent = pointLabel(d);
       pt.appendChild(ht);
       svg.appendChild(pt);
     });
@@ -272,12 +277,12 @@
     // 마지막 지점 강조 + 현재 잔액 값
     const lastI = series.length - 1;
     const lastDot = document.createElementNS(NS, "circle");
-    lastDot.setAttribute("cx", X(xs[lastI]));
+    lastDot.setAttribute("cx", X(lastI));
     lastDot.setAttribute("cy", Y(series[lastI].balance));
     lastDot.setAttribute("r", "3.5");
     lastDot.setAttribute("class", "chart-dot last");
     const lastTitle = document.createElementNS(NS, "title");
-    lastTitle.textContent = series[lastI].date + " · " + Math.round(series[lastI].balance).toLocaleString("ko-KR") + "원";
+    lastTitle.textContent = pointLabel(series[lastI]);
     lastDot.appendChild(lastTitle);
     svg.appendChild(lastDot);
 
@@ -298,13 +303,13 @@
         const xUser = (clientX - r.left) * scale;
         let best = 0, bd = Infinity;
         for (let i = 0; i < series.length; i++) {
-          const dd = Math.abs(X(xs[i]) - xUser);
+          const dd = Math.abs(X(i) - xUser);
           if (dd < bd) { bd = dd; best = i; }
         }
         return best;
       }
       function showBand(a, b) {
-        const xa = X(xs[a]), xb = X(xs[b]);
+        const xa = X(a), xb = X(b);
         band.setAttribute("x", Math.min(xa, xb) - 3);
         band.setAttribute("width", Math.abs(xb - xa) + 6);
         band.style.display = "";

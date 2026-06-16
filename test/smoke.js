@@ -114,7 +114,7 @@ function check(name, cond) {
   check("2026-06 순액 2,495,000", jun.net === 2495000);
   check("월 정렬: 05가 06보다 먼저", m[0].month === "2026-05");
 
-  console.log("\n[7] 잔액 추이 (소스별 마지막 잔액 합산)");
+  console.log("\n[7] 잔액 추이 (거래 단위로 모두 펼침, 소스별 잔액 합산)");
   const balSample = [
     { date: "2026-06-01", amount: -5000, source: "mg-account", balance: 1000 },
     { date: "2026-06-02", amount: -3000, source: "toss", balance: 500 },
@@ -123,11 +123,13 @@ function check(name, cond) {
     { date: "2026-06-04", amount: -1000, source: "no-balance-here" }, // balance 없음 → 제외
   ];
   const bs = HL.aggregate.balanceSeries(balSample);
-  check("3개 시점(날짜 중복 병합, balance 없는 건 제외)", bs.length === 3);
+  check("4개 시점(거래마다 한 점, balance 없는 건 제외)", bs.length === 4);
   check("첫 시점 합산 1000", bs[0].balance === 1000);
   check("둘째 시점 합산 1500 (mg1000+toss500)", bs[1].balance === 1500);
-  check("같은 날 마지막 값 사용: 1100+500=1600", bs[2].balance === 1600);
-  check("날짜 오름차순", bs[0].date === "2026-06-01" && bs[2].date === "2026-06-03");
+  check("같은 날 중간 등락 보존: mg1200+toss500=1700", bs[2].balance === 1700);
+  check("같은 날 마지막: mg1100+toss500=1600", bs[3].balance === 1600);
+  check("같은 날 두 시점 모두 06-03", bs[2].date === "2026-06-03" && bs[3].date === "2026-06-03");
+  check("날짜 오름차순", bs[0].date === "2026-06-01" && bs[bs.length - 1].date === "2026-06-03");
   check("balance 없으면 빈 배열", HL.aggregate.balanceSeries([{ date: "2026-06-01", amount: 1 }]).length === 0);
 
   console.log("\n[7-1] 월 산술/범위 유틸 + 기간 잔액 추이/합계");
