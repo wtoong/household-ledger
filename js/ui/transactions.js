@@ -137,7 +137,7 @@
         '<td class="td-amt ' + sign + '">' + HL.fmt.signedWon(t.amount) + "</td>" +
         '<td class="td-bal">' + bal + statusBadge(t) + "</td>" +
         '<td class="td-act"><button type="button" class="row-del" data-id="' + HL.fmt.esc(t.id) +
-          '" title="이 거래 삭제" aria-label="삭제">✕</button></td>";
+          '" title="이 거래 삭제" aria-label="삭제">✕</button></td>';
       frag.appendChild(tr);
 
       // 검증 문제(누락 추정) 행은 바로 아래에 사유를 인라인으로 펼친다.
