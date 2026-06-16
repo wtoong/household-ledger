@@ -27,6 +27,7 @@ HL.idb = {
   getAll: () => Promise.resolve(_db.slice()),
   getAllDedupKeys: () => Promise.resolve(new Set(_db.map((t) => t.dedupKey))),
   putMany: (items) => { items.forEach((i) => _db.push(i)); return Promise.resolve(items.length); },
+  remove: (id) => { const i = _db.findIndex((t) => t.id === id); if (i >= 0) _db.splice(i, 1); return Promise.resolve(); },
   clear: () => { _db.length = 0; return Promise.resolve(); },
 };
 
@@ -157,6 +158,26 @@ function check(name, cond) {
   const rep3 = HL.balance.validate(mixed2);
   check("잔액 없는 건 no-balance", rep3.annotations.p.status === "no-balance" && rep3.summary.noBalance === 1);
   check("다른 계좌 단독은 start", rep3.annotations.q.status === "start");
+
+  console.log("\n[11] 거래 개별 삭제 (잘못 들어온 거래 제거)");
+  _db.length = 0;
+  await HL.store.importTransactions(txs); // 3건
+  const before = (await HL.store.getAll()).length;
+  const victim = (await HL.store.getAll())[0];
+  await HL.store.remove(victim.id);
+  const after = await HL.store.getAll();
+  check("삭제 전 3건", before === 3);
+  check("1건 삭제 후 2건", after.length === 2);
+  check("삭제한 id는 사라짐", !after.some((t) => t.id === victim.id));
+  // 삭제해도 dedupKey가 비므로 같은 거래를 다시 임포트할 수 있어야 한다(되돌리기/재시도).
+  const reAdd = await HL.store.importTransactions([{ date: victim.date, time: victim.time, amount: victim.amount,
+    type: victim.type, description: victim.description, source: victim.source, balance: victim.balance, dedupKey: victim.dedupKey }]);
+  check("삭제 후 같은 거래 재임포트 가능", reAdd.added === 1);
+
+  console.log("\n[12] 토스 프롬프트: 날짜 구분선 상속 규칙 명시");
+  const tossPrompt = HL.adapters.get("toss").promptText;
+  check("위쪽 날짜 구분선을 따르라는 규칙 포함", tossPrompt.indexOf("위쪽") !== -1 && tossPrompt.indexOf("날짜 구분선") !== -1);
+  check("아래쪽 날짜를 쓰지 말라는 경고 포함", tossPrompt.indexOf("아래쪽") !== -1);
 
   console.log("\n결과: " + pass + " passed, " + fail + " failed\n");
   process.exit(fail ? 1 : 0);

@@ -131,6 +131,9 @@ main { max-width: 860px; margin: 0 auto; padding: 8px 12px; }
 .td-amt.neg { color: var(--expense); }
 .td-bal { text-align: right; white-space: nowrap; color: var(--muted); font-variant-numeric: tabular-nums; }
 .src-tag { display: inline-block; margin-left: 6px; font-size: 10.5px; color: var(--muted); background: var(--bg); padding: 1px 6px; border-radius: 6px; vertical-align: middle; }
+.td-act { text-align: center; white-space: nowrap; width: 1%; }
+.row-del { background: transparent; border: none; color: var(--muted); cursor: pointer; font-size: 13px; line-height: 1; padding: 4px 7px; border-radius: 7px; }
+.row-del:hover { color: var(--expense); background: rgba(229,72,77,.10); }
 
 /* 잔액 검증 표시 */
 .check { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); white-space: nowrap; }
@@ -146,7 +149,9 @@ main { max-width: 860px; margin: 0 auto; padding: 8px 12px; }
 .bal-flag.gap { color: var(--expense); }
 .bal-flag.none { color: var(--muted); }
 .bal-flag.start { color: var(--muted); opacity: .55; }
-.row-gap td { background: rgba(229,72,77,.06); }
+.row-gap td { background: rgba(229,72,77,.06); border-bottom: none; }
+.row-note td { background: rgba(229,72,77,.06); }
+.td-note { color: var(--expense); font-size: 12px; padding: 0 8px 9px 8px; }
 .more-btn { width: 100%; margin-top: 10px; padding: 10px; border: 1px dashed var(--line); background: transparent; color: var(--muted); border-radius: 10px; cursor: pointer; }
 
 /* 가져오기 */
