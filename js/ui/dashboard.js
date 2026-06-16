@@ -26,14 +26,19 @@
   }
 
   function render() {
-    const txs = HL.state.transactions;
+    HL.perspectives.renderSelector(el("dash-perspective"), HL.state.perspective, render);
+
+    // 선택한 관점으로 거래를 거른 뒤 집계 → 순현금흐름/차트가 관점을 그대로 반영한다.
+    const txs = HL.perspectives.apply(HL.state.transactions, HL.state.perspective);
     const monthly = HL.aggregate.monthly(txs);
 
-    // 선택 월 기본값: 데이터가 있는 가장 최근 달, 없으면 이번 달
-    if (!HL.state.selectedMonth) {
+    // 선택 월 기본값/보정: 관점을 바꾸면 그 달에 데이터가 없을 수 있으니
+    // 선택 월이 (현재 관점의) 데이터에 없으면 가장 최근 달로 끌어온다.
+    const monthKeys = monthly.map(function (m) { return m.month; });
+    if (!HL.state.selectedMonth || (monthly.length && monthKeys.indexOf(HL.state.selectedMonth) === -1)) {
       HL.state.selectedMonth = monthly.length
         ? monthly[monthly.length - 1].month
-        : new Date().toISOString().slice(0, 7);
+        : (HL.state.selectedMonth || new Date().toISOString().slice(0, 7));
     }
     const sel = HL.state.selectedMonth;
     const t = HL.aggregate.totalsForMonth(txs, sel);
@@ -67,7 +72,8 @@
   }
 
   function moveMonth(delta) {
-    const monthly = HL.aggregate.monthly(HL.state.transactions);
+    const txs = HL.perspectives.apply(HL.state.transactions, HL.state.perspective);
+    const monthly = HL.aggregate.monthly(txs);
     const months = monthly.map(function (m) { return m.month; });
     let idx = months.indexOf(HL.state.selectedMonth);
     if (idx === -1) return;

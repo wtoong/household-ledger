@@ -149,4 +149,39 @@ main { max-width: 860px; margin: 0 auto; padding: 8px 12px; }
 .note-card h3 { margin: 0 0 6px; font-size: 14px; }
 hr { border: none; border-top: 1px solid var(--line); margin: 16px 0; }
 
+/* 관점(perspective) 선택기 */
+.perspective-bar { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
+.persp-btn {
+  border: 1px solid var(--line); background: var(--card); color: var(--muted);
+  border-radius: 999px; padding: 6px 14px; font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.persp-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* 거래 태그 칩(목록에서 표시) */
+.tag-pill {
+  display: inline-block; margin-left: 6px; font-size: 10.5px; color: var(--accent);
+  background: rgba(47,109,246,.10); padding: 1px 7px; border-radius: 6px; vertical-align: middle;
+}
+
+/* 분류 검토 */
+.cat-review-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; }
+.cat-only { display: flex; align-items: center; gap: 5px; white-space: nowrap; cursor: pointer; }
+.cat-review-list { display: flex; flex-direction: column; gap: 8px; }
+.cat-row { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.cat-row.skipped { opacity: .55; }
+.cat-row-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.cat-desc { font-size: 13.5px; font-weight: 600; word-break: break-word; flex: 1; min-width: 120px; }
+.cat-meta { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.cat-meta .pos { color: var(--income); } .cat-meta .neg { color: var(--expense); }
+.conf { font-size: 11px; padding: 1px 7px; border-radius: 999px; font-weight: 700; }
+.conf.high { background: rgba(31,157,107,.14); color: var(--income); }
+.conf.mid { background: rgba(120,140,160,.16); color: var(--muted); }
+.conf.low { background: rgba(229,72,77,.14); color: var(--expense); }
+.cat-skip { border: 1px solid var(--line); background: var(--card); color: var(--muted); border-radius: 8px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
+.cat-row.skipped .cat-skip { background: var(--expense); color: #fff; border-color: var(--expense); }
+.cat-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.tag-chip { border: 1px solid var(--line); background: var(--bg); color: var(--muted); border-radius: 999px; padding: 4px 11px; font-size: 12px; cursor: pointer; }
+.tag-chip.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+
 .app-footer { text-align: center; max-width: 860px; margin: 16px auto 0; }
