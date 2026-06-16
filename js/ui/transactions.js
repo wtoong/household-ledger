@@ -1,4 +1,5 @@
 // 거래목록: 기간 필터 + 텍스트 검색(적요) + 수입/지출 필터, 시간 역순, 더보기.
+// 잔액 검증(HL.balance) 결과로 같은 시각 순서를 보정하고, 누락 추정/연속 확정을 표시한다.
 (function () {
   window.HL = window.HL || {};
 
@@ -10,6 +11,7 @@
   const PAGE = 50;
   let _shown = PAGE;
   let _filtered = [];
+  let _report = { annotations: {}, orderRank: {}, problems: [], summary: {} };
 
   function applyFilters() {
     // 관점 선택기는 매 렌더마다 현재 상태로 다시 그려 다른 탭에서 바꾼 값도 반영한다.
@@ -19,6 +21,11 @@
     const to = el("tx-to").value;
     const q = el("tx-search").value.trim().toLowerCase();
     const type = el("tx-type").value; // all/income/expense
+    const issuesOnly = el("tx-issues-only") && el("tx-issues-only").checked;
+
+    // 잔액 검증은 전체 거래 기준으로 한 번 계산(계좌별 체인이라 필터와 무관해야 정확).
+    _report = HL.balance.validate(HL.state.transactions);
+    const ann = _report.annotations;
 
     // 관점(저장된 필터)을 먼저 적용한 뒤, 기간/검색/구분 필터를 합성한다.
     const persp = HL.perspectives.apply(HL.state.transactions, HL.state.perspective);
@@ -28,22 +35,87 @@
       if (type === "income" && t.amount < 0) return false;
       if (type === "expense" && t.amount >= 0) return false;
       if (q && String(t.description || "").toLowerCase().indexOf(q) === -1) return false;
+      if (issuesOnly) {
+        const st = ann[t.id] && ann[t.id].status;
+        if (st !== "gap" && st !== "no-balance") return false;
+      }
       return true;
     });
     _filtered.sort(function (a, b) {
       // 날짜+시각 기준 최신 먼저. 시각이 있으면 같은 날 거래도 올바르게 정렬된다.
       const ka = dtKey(a), kb = dtKey(b);
       if (ka !== kb) return ka < kb ? 1 : -1;
+      // 시각이 같으면: 같은 계좌는 잔액 체인으로 찾은 순서(orderRank)를 따른다(나중 거래가 위로).
+      if ((a.source || "") === (b.source || "")) {
+        const ra = _report.orderRank[a.id], rb = _report.orderRank[b.id];
+        if (ra != null && rb != null && ra !== rb) return rb - ra;
+      }
       return (b.importedAt || "").localeCompare(a.importedAt || ""); // 최종 동점 처리
     });
     _shown = PAGE;
     renderList();
   }
 
+  function renderValidation() {
+    const box = el("tx-validation");
+    if (!box) return;
+    const s = _report.summary || {};
+    const probs = _report.problems || [];
+    const gaps = probs.filter(function (p) { return p.kind === "gap"; });
+
+    if (!s.checked && !s.noBalance) { box.style.display = "none"; box.innerHTML = ""; return; }
+
+    let html = '<div class="val-head">';
+    if (!gaps.length && !s.noBalance) {
+      html += '<span class="val-badge ok">✓ 잔액 연속성 확인됨</span>' +
+        '<span class="muted small"> 검증한 ' + s.checked + '건이 모두 잔액과 맞물립니다 (사이 누락 없음 확정).</span>';
+    } else {
+      html += '<span class="val-badge warn">⚠ 잔액 검증 결과</span>';
+      const parts = [];
+      if (gaps.length) parts.push(gaps.length + '곳에서 누락 추정(시간 미상)');
+      if (s.noBalance) parts.push(s.noBalance + '건은 잔액 없어 검증 불가');
+      if (s.reordered) parts.push(s.reordered + '곳 같은시각 순서를 잔액으로 보정');
+      html += '<span class="muted small"> ' + HL.fmt.esc(parts.join(' · ')) + '</span>';
+    }
+    html += '</div>';
+
+    if (gaps.length) {
+      html += '<ul class="val-list">';
+      gaps.slice(0, 8).forEach(function (p) {
+        const when = p.date + (p.time ? " " + p.time.slice(0, 5) : "");
+        const dir = p.gapAmount >= 0 ? "입금" : "출금";
+        html += '<li><b>' + HL.fmt.esc(when) + '</b> [' + HL.fmt.sourceLabel(p.account) + '] ' +
+          '직전 거래와 잔액이 ' + HL.fmt.signedWon(p.gapAmount) +
+          ' 어긋남 → ' + dir + ' 약 ' + HL.fmt.won(Math.abs(p.gapAmount)) + ' 누락 추정 (시간 미상, 확인필요)</li>';
+      });
+      if (gaps.length > 8) html += '<li class="muted">… 외 ' + (gaps.length - 8) + '곳</li>';
+      html += '</ul>';
+    }
+    box.innerHTML = html;
+    box.style.display = "";
+  }
+
+  // 잔액 셀 옆에 붙일 검증 배지
+  function statusBadge(t) {
+    const a = _report.annotations[t.id];
+    if (!a) return "";
+    if (a.status === "ok") return '<span class="bal-flag ok" title="직전 잔액과 맞물림: 사이 누락 없음 확정">✓</span>';
+    if (a.status === "start") return '<span class="bal-flag start" title="이 계좌에서 검증된 가장 이른 거래(기준점)">●</span>';
+    if (a.status === "no-balance") return '<span class="bal-flag none" title="잔액 정보가 없어 검증 불가">?</span>';
+    if (a.status === "gap") {
+      const dir = a.gapAmount >= 0 ? "입금" : "출금";
+      return '<span class="bal-flag gap" title="직전 거래와 잔액 ' + HL.fmt.signedWon(a.gapAmount) +
+        ' 어긋남 → ' + dir + ' 약 ' + HL.fmt.won(Math.abs(a.gapAmount)) + ' 누락 추정(시간 미상)">⚠</span>';
+    }
+    return "";
+  }
+
   function renderList() {
     const tbody = el("tx-tbody");
     tbody.innerHTML = "";
     const slice = _filtered.slice(0, _shown);
+
+    renderValidation();
 
     // 필터 합계 요약
     let inc = 0, exp = 0;
@@ -61,17 +133,21 @@
     slice.forEach(function (t) {
       const tr = document.createElement("tr");
       const sign = t.amount >= 0 ? "pos" : "neg";
-      const srcLabel = HL.fmt.sourceLabel(t.source);
+      // 계좌 라벨이 있으면 그걸 보여주고(잔액·현금흐름 단위), 없으면 소스명.
+      const srcLabel = t.account ? t.account : HL.fmt.sourceLabel(t.source);
       const timeLabel = t.time ? '<span class="td-time">' + HL.fmt.esc(t.time.slice(0, 5)) + "</span>" : "";
       const tagsHtml = (t.tags || []).map(function (g) {
         return '<span class="tag-pill">' + HL.fmt.esc(g) + "</span>";
       }).join("");
+      const bal = typeof t.balance === "number" ? HL.fmt.won(t.balance) : "";
+      const a = _report.annotations[t.id];
+      if (a && a.status === "gap") tr.className = "row-gap";
       tr.innerHTML =
         '<td class="td-date">' + HL.fmt.esc(t.date) + timeLabel + "</td>" +
         '<td class="td-desc">' + HL.fmt.esc(t.description || "(적요 없음)") +
           '<span class="src-tag">' + HL.fmt.esc(srcLabel) + "</span>" + tagsHtml + "</td>" +
         '<td class="td-amt ' + sign + '">' + HL.fmt.signedWon(t.amount) + "</td>" +
-        '<td class="td-bal">' + (typeof t.balance === "number" ? HL.fmt.won(t.balance) : "") + "</td>";
+        '<td class="td-bal">' + bal + statusBadge(t) + "</td>";
       frag.appendChild(tr);
     });
     tbody.appendChild(frag);
@@ -86,6 +162,7 @@
       ["tx-from", "tx-to", "tx-type"].forEach(function (id) {
         el(id).addEventListener("change", applyFilters);
       });
+      if (el("tx-issues-only")) el("tx-issues-only").addEventListener("change", applyFilters);
       el("tx-search").addEventListener("input", function () {
         clearTimeout(HL.transactions._t);
         HL.transactions._t = setTimeout(applyFilters, 150);
@@ -93,6 +170,7 @@
       el("tx-reset-filter").addEventListener("click", function () {
         el("tx-from").value = ""; el("tx-to").value = "";
         el("tx-search").value = ""; el("tx-type").value = "all";
+        if (el("tx-issues-only")) el("tx-issues-only").checked = false;
         applyFilters();
       });
       el("tx-more").addEventListener("click", function () {

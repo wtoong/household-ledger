@@ -15,7 +15,7 @@ function load(rel) {
   vm.runInContext(code, sandbox, { filename: rel });
 }
 
-["js/lib/hash.js", "js/lib/encoding.js", "js/core/aggregate.js",
+["js/lib/hash.js", "js/lib/encoding.js", "js/core/aggregate.js", "js/core/balance.js",
  "js/adapters/registry.js", "js/adapters/mg-account.js", "js/adapters/toss-paste.js",
  "js/core/categories.js", "js/core/perspectives.js",
  "js/core/store.js"].forEach(load);
@@ -124,7 +124,66 @@ function check(name, cond) {
   check("다음날이 맨 위", mixed[0].date === "2026-05-23");
   check("같은 날은 늦은 시각이 먼저", mixed[1].time === "23:10:00" && mixed[2].time === "08:00:00");
 
-  console.log("\n[8] 분류: 정규화 기본값 + 태그 보존");
+  console.log("\n[8] 잔액 검증: 연속성 확정 + 누락 추정");
+  // 같은 계좌(source) 시간순 체인. 두번째 거래의 잔액이 한 칸 어긋나 누락 추정이 떠야 한다.
+  const chain = [
+    { id: "a", source: "mg", date: "2026-06-01", time: "09:00:00", amount: 100000, balance: 100000 },
+    { id: "b", source: "mg", date: "2026-06-02", time: "10:00:00", amount: -3000, balance: 97000 },   // ok: 100000-3000
+    { id: "c", source: "mg", date: "2026-06-03", time: "11:00:00", amount: -5000, balance: 80000 },   // gap: 97000-5000=92000≠80000
+    { id: "d", source: "mg", date: "2026-06-04", time: "12:00:00", amount: -2000, balance: 78000 },   // ok: 80000-2000
+  ];
+  const rep = HL.balance.validate(chain);
+  check("첫 거래는 기준점(start)", rep.annotations.a.status === "start");
+  check("연속 일치 거래는 ok", rep.annotations.b.status === "ok" && rep.annotations.d.status === "ok");
+  check("어긋난 거래는 gap", rep.annotations.c.status === "gap");
+  check("누락 추정액 -12,000 (출금)", rep.annotations.c.gapAmount === -12000);
+  check("문제 1곳 집계", rep.summary.gaps === 1 && rep.problems.filter((p) => p.kind === "gap").length === 1);
+
+  console.log("\n[9] 같은 시각 묶음: 잔액으로 순서 보정");
+  // 동일 날짜·시각, 잔액만으로 올바른 순서를 찾아야 한다(들어온 순서는 거꾸로).
+  const sameTime = [
+    { id: "x", source: "mg", date: "2026-06-10", time: "14:00:00", amount: -12000, balance: 1530000 }, // 나중
+    { id: "y", source: "mg", date: "2026-06-10", time: "14:00:00", amount: 2500000, balance: 1542000 }, // 먼저
+  ];
+  const rep2 = HL.balance.validate(sameTime);
+  check("잔액 체인이 맞는 순서로 rank 확정(y가 먼저)", rep2.orderRank.y < rep2.orderRank.x);
+  check("보정 후 x는 연속 ok", rep2.annotations.x.status === "ok");
+  check("순서 보정 1곳 기록", rep2.summary.reordered === 1);
+
+  console.log("\n[10] 잔액 없는 건 + 계좌 분리");
+  const mixed2 = [
+    { id: "p", source: "mg", date: "2026-06-01", amount: -1000 },                       // 잔액 없음
+    { id: "q", source: "toss", date: "2026-06-01", amount: -1000, balance: 5000 },       // 다른 계좌, 단독
+  ];
+  const rep3 = HL.balance.validate(mixed2);
+  check("잔액 없는 건 no-balance", rep3.annotations.p.status === "no-balance" && rep3.summary.noBalance === 1);
+  check("다른 계좌 단독은 start", rep3.annotations.q.status === "start");
+
+  console.log("\n[11] 계좌(account) 기준: 토스+CSV 같은 계좌를 한 체인으로 병합 검증");
+  // 같은 새마을금고 계좌를 CSV(급여)와 토스 캡쳐(커피)로 나눠 넣어도 account가 같으면 한 체인.
+  const mgRows = HL.encoding.parseCsv(["거래일시,적요,출금금액,입금금액,잔액",
+    "2026-07-01 09:00:00,급여,,1000000,1000000"].join("\n"));
+  const mgTx = mg._internal.rowsToTransactions(mgRows, "주계좌");
+  check("account 라벨 스탬프", mgTx[0].account === "주계좌");
+  // account를 주면 dedupKey가 source-폴백과 달라진다(계좌가 키에 반영됨)
+  const mgNoAcct = mg._internal.rowsToTransactions(mgRows);
+  check("account가 dedupKey에 반영(미지정과 다름)", mgTx[0].dedupKey !== mgNoAcct[0].dedupKey);
+  check("account 미지정은 기존대로 source 폴백(키 안정)", mgNoAcct[0].account === undefined);
+
+  const tossAcct = await toss.parseText(
+    '[{"date":"2026-07-02","time":"10:00","amount":-3000,"description":"커피","balance":997000}]', { account: "주계좌" });
+  check("토스도 account 스탬프", tossAcct[0].account === "주계좌");
+
+  const merged = [
+    Object.assign({ id: "m1" }, mgTx[0]),
+    Object.assign({ id: "t1" }, tossAcct[0]),
+  ];
+  const repM = HL.balance.validate(merged);
+  check("같은 계좌라 한 체인: CSV가 기준점", repM.annotations.m1.status === "start");
+  check("토스 거래가 잔액으로 연속 확정(ok)", repM.annotations.t1.status === "ok");
+  check("누락/문제 없음", repM.summary.gaps === 0);
+
+  console.log("\n[12] 분류: 정규화 기본값 + 태그 보존");
   _db.length = 0;
   const nr = await HL.store.importTransactions([
     { date: "2026-06-01", amount: -5000, description: "스벅", dedupKey: "k1" },
@@ -134,7 +193,7 @@ function check(name, cond) {
   check("tags 기본 []", Array.isArray(norm.tags) && norm.tags.length === 0);
   check("tagStatus 기본 none", norm.tagStatus === "none");
 
-  console.log("\n[9] 분류 프롬프트 생성 + 결과 파싱");
+  console.log("\n[13] 분류 프롬프트 생성 + 결과 파싱");
   const prompt = HL.categories.buildPrompt([{ id: "abc", date: "2026-06-01", amount: -5000, description: "스타벅스" }]);
   check("허용 태그가 프롬프트에 포함", prompt.indexOf("식비") !== -1 && prompt.indexOf("부동산") !== -1);
   check("입력 id가 payload에 포함", prompt.indexOf('"id":"abc"') !== -1);
@@ -149,7 +208,7 @@ function check(name, cond) {
   check("허용 외 태그 제거", parsed.items[0].tags.length === 1 && parsed.items[0].tags[0] === "식비");
   check("status skip 또는 빈 태그 → skip", parsed.items[1].skip === true);
 
-  console.log("\n[10] 관점(perspective) 필터");
+  console.log("\n[14] 관점(perspective) 필터");
   const pTx = [
     { amount: -8000, type: "expense", tags: [] },                    // 생활
     { amount: -300000000, type: "expense", tags: ["부동산"] },       // 부동산/큰 자금

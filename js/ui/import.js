@@ -32,13 +32,18 @@
     el("import-result").style.display = "none";
   }
 
+  function importOpts() {
+    const acct = el("import-account").value.trim();
+    return { account: acct || undefined };
+  }
+
   function handleFile() {
     const id = el("import-source").value;
     const adapter = HL.adapters.get(id);
     const file = el("import-file").files[0];
     if (!file) { setResult("파일을 선택하세요.", "err"); return; }
     setResult("파싱 중…", "");
-    adapter.parse(file)
+    adapter.parse(file, importOpts())
       .then(function (txs) {
         if (!txs.length) { setResult("파일에서 거래를 찾지 못했습니다. 컬럼/형식을 확인하세요.", "err"); return; }
         return HL.store.importTransactions(txs).then(afterImport);
@@ -53,9 +58,25 @@
     const text = el("import-text").value;
     if (!text.trim()) { setResult("JSON을 붙여넣으세요.", "err"); return; }
     setResult("처리 중…", "");
-    adapter.parseText(text)
+    adapter.parseText(text, importOpts())
       .then(function (txs) { return HL.store.importTransactions(txs).then(afterImport); })
       .catch(function (e) { setResult("오류: " + e.message, "err"); });
+  }
+
+  // 이미 저장된 거래에서 쓰인 계좌 라벨을 datalist에 채워 재입력을 돕는다.
+  function refreshAccountList() {
+    const dl = el("account-labels");
+    if (!dl) return;
+    const seen = {};
+    (HL.state.transactions || []).forEach(function (t) {
+      if (t.account && !seen[t.account]) seen[t.account] = true;
+    });
+    dl.innerHTML = "";
+    Object.keys(seen).sort().forEach(function (label) {
+      const o = document.createElement("option");
+      o.value = label;
+      dl.appendChild(o);
+    });
   }
 
   function copyPrompt() {
@@ -87,6 +108,7 @@
         });
         onAdapterChange();
       }
+      refreshAccountList();
     },
     init: function () {
       el("import-source").addEventListener("change", onAdapterChange);

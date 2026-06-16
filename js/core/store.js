@@ -13,6 +13,7 @@
       type: t.type || (t.amount >= 0 ? "income" : "expense"),
       description: t.description || "",
       source: t.source,
+      account: t.account || undefined, // 잔액·현금흐름의 단위(계좌 라벨). 없으면 source가 계좌 역할.
       dedupKey: t.dedupKey,
       importedAt: new Date().toISOString(),
       // 관점(perspective)용 태그 + 분류 상태기계.
@@ -77,7 +78,7 @@
   }
 
   function exportCSV(transactions) {
-    const cols = ["date", "time", "amount", "type", "description", "source", "tags", "tagStatus", "balance", "dedupKey", "importedAt"];
+    const cols = ["date", "time", "amount", "type", "description", "source", "account", "tags", "tagStatus", "balance", "dedupKey", "importedAt"];
     const lines = [cols.join(",")];
     transactions.forEach(function (t) {
       lines.push(cols.map(function (c) {
