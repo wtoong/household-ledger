@@ -23,11 +23,12 @@
   };
 
   // --- 상태 ---
-  HL.state = { transactions: [], selectedMonth: null };
+  HL.state = { transactions: [], selectedMonth: null, perspective: "all" };
 
   const views = {
     dashboard: HL.dashboard,
     transactions: HL.transactions,
+    categorize: HL.categorize,
     import: HL.import,
     data: HL.dataView,
   };

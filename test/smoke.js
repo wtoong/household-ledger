@@ -17,6 +17,7 @@ function load(rel) {
 
 ["js/lib/hash.js", "js/lib/encoding.js", "js/core/aggregate.js", "js/core/balance.js",
  "js/adapters/registry.js", "js/adapters/mg-account.js", "js/adapters/toss-paste.js",
+ "js/core/categories.js", "js/core/perspectives.js",
  "js/core/store.js"].forEach(load);
 
 const HL = sandbox.HL;
@@ -181,6 +182,44 @@ function check(name, cond) {
   check("같은 계좌라 한 체인: CSV가 기준점", repM.annotations.m1.status === "start");
   check("토스 거래가 잔액으로 연속 확정(ok)", repM.annotations.t1.status === "ok");
   check("누락/문제 없음", repM.summary.gaps === 0);
+
+  console.log("\n[12] 분류: 정규화 기본값 + 태그 보존");
+  _db.length = 0;
+  const nr = await HL.store.importTransactions([
+    { date: "2026-06-01", amount: -5000, description: "스벅", dedupKey: "k1" },
+  ]);
+  check("import 1건", nr.added === 1);
+  const norm = (await HL.idb.getAll())[0];
+  check("tags 기본 []", Array.isArray(norm.tags) && norm.tags.length === 0);
+  check("tagStatus 기본 none", norm.tagStatus === "none");
+
+  console.log("\n[13] 분류 프롬프트 생성 + 결과 파싱");
+  const prompt = HL.categories.buildPrompt([{ id: "abc", date: "2026-06-01", amount: -5000, description: "스타벅스" }]);
+  check("허용 태그가 프롬프트에 포함", prompt.indexOf("식비") !== -1 && prompt.indexOf("부동산") !== -1);
+  check("입력 id가 payload에 포함", prompt.indexOf('"id":"abc"') !== -1);
+
+  const known = new Set(["abc", "def"]);
+  const parsed = HL.categories.parseResult(
+    '```json\n[{"id":"abc","tags":["식비","없는태그"],"confidence":0.9,"status":"ok"},' +
+    '{"id":"def","tags":[],"confidence":0.1,"status":"skip"},' +
+    '{"id":"zzz","tags":["식비"],"status":"ok"}]\n```', known);
+  check("코드펜스 벗기고 파싱", parsed.error === null);
+  check("모르는 id(zzz) 1건 무시", parsed.unknown === 1 && parsed.matched === 2);
+  check("허용 외 태그 제거", parsed.items[0].tags.length === 1 && parsed.items[0].tags[0] === "식비");
+  check("status skip 또는 빈 태그 → skip", parsed.items[1].skip === true);
+
+  console.log("\n[14] 관점(perspective) 필터");
+  const pTx = [
+    { amount: -8000, type: "expense", tags: [] },                    // 생활
+    { amount: -300000000, type: "expense", tags: ["부동산"] },       // 부동산/큰 자금
+    { amount: -5000000, type: "expense", tags: [] },                 // 금액만으로 큰 자금
+    { amount: -1000000, type: "transfer", excludeFromTotal: true, tags: [] }, // 이체
+  ];
+  check("전체 = 4건", HL.perspectives.apply(pTx, "all").length === 4);
+  check("생활 현금흐름 = 1건(자잘한 것만)", HL.perspectives.apply(pTx, "daily").length === 1);
+  check("큰 자금이동 = 3건", HL.perspectives.apply(pTx, "big").length === 3);
+  check("부동산 = 1건(태그 기준)", HL.perspectives.apply(pTx, "realestate").length === 1);
+  check("알 수 없는 관점은 전체로 폴백", HL.perspectives.apply(pTx, "nope").length === 4);
 
   console.log("\n결과: " + pass + " passed, " + fail + " failed\n");
   process.exit(fail ? 1 : 0);
