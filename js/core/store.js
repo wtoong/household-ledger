@@ -8,6 +8,7 @@
     return {
       id: HL.hash.uuid(),
       date: t.date,
+      time: t.time || undefined,
       amount: t.amount,
       type: t.type || (t.amount >= 0 ? "income" : "expense"),
       description: t.description || "",
@@ -63,7 +64,7 @@
   }
 
   function exportCSV(transactions) {
-    const cols = ["date", "amount", "type", "description", "source", "balance", "dedupKey", "importedAt"];
+    const cols = ["date", "time", "amount", "type", "description", "source", "balance", "dedupKey", "importedAt"];
     const lines = [cols.join(",")];
     transactions.forEach(function (t) {
       lines.push(cols.map(function (c) { return csvEscape(t[c]); }).join(","));

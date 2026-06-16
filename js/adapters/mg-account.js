@@ -36,6 +36,23 @@
     return null;
   }
 
+  // 시각 추출: "HH:MM" 또는 "HH:MM:SS"(24시간) 정규화. 없으면 null.
+  // 거래일시 컬럼(예: "2026-06-01 14:30:25")이나 별도 시각 값 모두 대응.
+  function toTime(v) {
+    if (v instanceof Date && !isNaN(v)) {
+      const t = v.getHours() || v.getMinutes() || v.getSeconds();
+      if (!t) return null; // 자정(시각 정보 없음으로 간주)은 무시
+      return pad2(v.getHours()) + ":" + pad2(v.getMinutes()) + ":" + pad2(v.getSeconds());
+    }
+    const s = String(v == null ? "" : v).trim();
+    if (!s) return null;
+    const m = s.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if (!m) return null;
+    const hh = +m[1], mm = +m[2], ss = m[3] == null ? 0 : +m[3];
+    if (hh > 23 || mm > 59 || ss > 59) return null;
+    return pad2(hh) + ":" + pad2(mm) + ":" + pad2(ss);
+  }
+
   function num(v) {
     if (typeof v === "number") return v;
     let s = String(v == null ? "" : v).trim();
@@ -106,6 +123,7 @@
       const row = rows[r];
       const date = toIso(row[cDate]);
       if (!date) continue; // 합계줄/빈줄/안내문 스킵
+      const time = toTime(row[cDate]); // 거래일시 컬럼에 시각이 함께 있으면 추출
 
       let amount;
       if (cWd !== -1 || cDp !== -1) {
@@ -120,10 +138,11 @@
       const description = cDesc !== -1 ? String(row[cDesc] == null ? "" : row[cDesc]).trim() : "";
       const balance = cBal !== -1 ? num(row[cBal]) : undefined;
 
-      // dedupKey: 잔액까지 포함해 같은 날 동일 금액/적요 충돌을 줄인다 (PRD 5.2)
-      const keyParts = [SOURCE, date, amount, description, balance == null ? "" : balance];
+      // dedupKey: 시각·잔액까지 포함해 같은 날 동일 금액/적요 충돌을 줄인다 (PRD 5.2)
+      const keyParts = [SOURCE, date, time || "", amount, description, balance == null ? "" : balance];
       out.push({
         date: date,
+        time: time || undefined,
         amount: amount,
         type: amount >= 0 ? "income" : "expense",
         description: description,
@@ -172,6 +191,6 @@
     help: "새마을금고 인터넷뱅킹 거래내역조회에서 받은 CSV 또는 XLSX 파일을 업로드하세요. 인코딩(EUC-KR/UTF-8)은 자동 감지됩니다.",
     parse: parse,
     // 테스트/디버깅을 위해 내부 함수 노출
-    _internal: { rowsToTransactions: rowsToTransactions, toIso: toIso, num: num },
+    _internal: { rowsToTransactions: rowsToTransactions, toIso: toIso, toTime: toTime, num: num },
   });
 })();
