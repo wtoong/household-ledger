@@ -131,6 +131,22 @@ main { max-width: 860px; margin: 0 auto; padding: 8px 12px; }
 .td-amt.neg { color: var(--expense); }
 .td-bal { text-align: right; white-space: nowrap; color: var(--muted); font-variant-numeric: tabular-nums; }
 .src-tag { display: inline-block; margin-left: 6px; font-size: 10.5px; color: var(--muted); background: var(--bg); padding: 1px 6px; border-radius: 6px; vertical-align: middle; }
+
+/* 잔액 검증 표시 */
+.check { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.tx-validation { margin: 6px 0 4px; padding: 10px 12px; border-radius: 10px; background: var(--bg); font-size: 13px; }
+.val-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
+.val-badge { font-weight: 700; font-size: 12px; padding: 2px 8px; border-radius: 999px; }
+.val-badge.ok { color: var(--income); background: rgba(31,157,107,.14); }
+.val-badge.warn { color: var(--expense); background: rgba(229,72,77,.14); }
+.val-list { margin: 8px 0 0; padding-left: 18px; font-size: 12.5px; line-height: 1.5; }
+.val-list b { font-variant-numeric: tabular-nums; }
+.bal-flag { margin-left: 6px; font-size: 11px; cursor: help; }
+.bal-flag.ok { color: var(--income); opacity: .7; }
+.bal-flag.gap { color: var(--expense); }
+.bal-flag.none { color: var(--muted); }
+.bal-flag.start { color: var(--muted); opacity: .55; }
+.row-gap td { background: rgba(229,72,77,.06); }
 .more-btn { width: 100%; margin-top: 10px; padding: 10px; border: 1px dashed var(--line); background: transparent; color: var(--muted); border-radius: 10px; cursor: pointer; }
 
 /* 가져오기 */
