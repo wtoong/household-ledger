@@ -73,6 +73,16 @@
     });
   }
 
+  function remove(id) {
+    return tx("readwrite").then(function (store) {
+      return new Promise(function (resolve, reject) {
+        const req = store.delete(id);
+        req.onsuccess = function () { resolve(); };
+        req.onerror = function () { reject(req.error); };
+      });
+    });
+  }
+
   function clear() {
     return tx("readwrite").then(function (store) {
       return new Promise(function (resolve, reject) {
@@ -88,6 +98,7 @@
     getAll: getAll,
     getAllDedupKeys: getAllDedupKeys,
     putMany: putMany,
+    remove: remove,
     clear: clear,
   };
 })();

@@ -28,6 +28,7 @@ HL.idb = {
   getAll: () => Promise.resolve(_db.slice()),
   getAllDedupKeys: () => Promise.resolve(new Set(_db.map((t) => t.dedupKey))),
   putMany: (items) => { items.forEach((i) => _db.push(i)); return Promise.resolve(items.length); },
+  remove: (id) => { const i = _db.findIndex((t) => t.id === id); if (i >= 0) _db.splice(i, 1); return Promise.resolve(); },
   clear: () => { _db.length = 0; return Promise.resolve(); },
 };
 
@@ -159,7 +160,27 @@ function check(name, cond) {
   check("잔액 없는 건 no-balance", rep3.annotations.p.status === "no-balance" && rep3.summary.noBalance === 1);
   check("다른 계좌 단독은 start", rep3.annotations.q.status === "start");
 
-  console.log("\n[11] 계좌(account) 기준: 토스+CSV 같은 계좌를 한 체인으로 병합 검증");
+  console.log("\n[11] 거래 개별 삭제 (잘못 들어온 거래 제거)");
+  _db.length = 0;
+  await HL.store.importTransactions(txs); // 3건
+  const before = (await HL.store.getAll()).length;
+  const victim = (await HL.store.getAll())[0];
+  await HL.store.remove(victim.id);
+  const after = await HL.store.getAll();
+  check("삭제 전 3건", before === 3);
+  check("1건 삭제 후 2건", after.length === 2);
+  check("삭제한 id는 사라짐", !after.some((t) => t.id === victim.id));
+  // 삭제해도 dedupKey가 비므로 같은 거래를 다시 임포트할 수 있어야 한다(되돌리기/재시도).
+  const reAdd = await HL.store.importTransactions([{ date: victim.date, time: victim.time, amount: victim.amount,
+    type: victim.type, description: victim.description, source: victim.source, balance: victim.balance, dedupKey: victim.dedupKey }]);
+  check("삭제 후 같은 거래 재임포트 가능", reAdd.added === 1);
+
+  console.log("\n[12] 토스 프롬프트: 날짜 구분선 상속 규칙 명시");
+  const tossPrompt = HL.adapters.get("toss").promptText;
+  check("위쪽 날짜 구분선을 따르라는 규칙 포함", tossPrompt.indexOf("위쪽") !== -1 && tossPrompt.indexOf("날짜 구분선") !== -1);
+  check("아래쪽 날짜를 쓰지 말라는 경고 포함", tossPrompt.indexOf("아래쪽") !== -1);
+
+  console.log("\n[13] 계좌(account) 기준: 토스+CSV 같은 계좌를 한 체인으로 병합 검증");
   // 같은 새마을금고 계좌를 CSV(급여)와 토스 캡쳐(커피)로 나눠 넣어도 account가 같으면 한 체인.
   const mgRows = HL.encoding.parseCsv(["거래일시,적요,출금금액,입금금액,잔액",
     "2026-07-01 09:00:00,급여,,1000000,1000000"].join("\n"));
@@ -183,7 +204,7 @@ function check(name, cond) {
   check("토스 거래가 잔액으로 연속 확정(ok)", repM.annotations.t1.status === "ok");
   check("누락/문제 없음", repM.summary.gaps === 0);
 
-  console.log("\n[12] 분류: 정규화 기본값 + 태그 보존");
+  console.log("\n[14] 분류: 정규화 기본값 + 태그 보존");
   _db.length = 0;
   const nr = await HL.store.importTransactions([
     { date: "2026-06-01", amount: -5000, description: "스벅", dedupKey: "k1" },
@@ -193,7 +214,7 @@ function check(name, cond) {
   check("tags 기본 []", Array.isArray(norm.tags) && norm.tags.length === 0);
   check("tagStatus 기본 none", norm.tagStatus === "none");
 
-  console.log("\n[13] 분류 프롬프트 생성 + 결과 파싱");
+  console.log("\n[15] 분류 프롬프트 생성 + 결과 파싱");
   const prompt = HL.categories.buildPrompt([{ id: "abc", date: "2026-06-01", amount: -5000, description: "스타벅스" }]);
   check("허용 태그가 프롬프트에 포함", prompt.indexOf("식비") !== -1 && prompt.indexOf("부동산") !== -1);
   check("입력 id가 payload에 포함", prompt.indexOf('"id":"abc"') !== -1);
@@ -208,7 +229,7 @@ function check(name, cond) {
   check("허용 외 태그 제거", parsed.items[0].tags.length === 1 && parsed.items[0].tags[0] === "식비");
   check("status skip 또는 빈 태그 → skip", parsed.items[1].skip === true);
 
-  console.log("\n[14] 관점(perspective) 필터");
+  console.log("\n[16] 관점(perspective) 필터");
   const pTx = [
     { amount: -8000, type: "expense", tags: [] },                    // 생활
     { amount: -300000000, type: "expense", tags: ["부동산"] },       // 부동산/큰 자금

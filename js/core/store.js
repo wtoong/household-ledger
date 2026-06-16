@@ -55,6 +55,10 @@
     return HL.idb.getAll();
   }
 
+  function remove(id) {
+    return HL.idb.remove(id);
+  }
+
   // 이미 저장된 거래(전체 레코드)를 갱신 저장. putMany는 id(keyPath)로 upsert하므로 그대로 덮어쓴다.
   // 태그/분류 상태 변경 등 부분 수정 시, 호출부에서 메모리의 전체 레코드를 수정해 넘긴다.
   function updateMany(txs) {
@@ -93,6 +97,7 @@
   HL.store = {
     importTransactions: importTransactions,
     getAll: getAll,
+    remove: remove,
     updateMany: updateMany,
     clear: clear,
     exportJSON: exportJSON,

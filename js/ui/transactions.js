@@ -65,6 +65,7 @@
 
     if (!s.checked && !s.noBalance) { box.style.display = "none"; box.innerHTML = ""; return; }
 
+    // 상세 사유는 아래 표의 각 행에 인라인으로 표시한다. 여기서는 한 줄 요약만 둔다.
     let html = '<div class="val-head">';
     if (!gaps.length && !s.noBalance) {
       html += '<span class="val-badge ok">✓ 잔액 연속성 확인됨</span>' +
@@ -72,25 +73,12 @@
     } else {
       html += '<span class="val-badge warn">⚠ 잔액 검증 결과</span>';
       const parts = [];
-      if (gaps.length) parts.push(gaps.length + '곳에서 누락 추정(시간 미상)');
+      if (gaps.length) parts.push(gaps.length + '곳 누락 추정(아래 ⚠ 행 참고)');
       if (s.noBalance) parts.push(s.noBalance + '건은 잔액 없어 검증 불가');
       if (s.reordered) parts.push(s.reordered + '곳 같은시각 순서를 잔액으로 보정');
       html += '<span class="muted small"> ' + HL.fmt.esc(parts.join(' · ')) + '</span>';
     }
     html += '</div>';
-
-    if (gaps.length) {
-      html += '<ul class="val-list">';
-      gaps.slice(0, 8).forEach(function (p) {
-        const when = p.date + (p.time ? " " + p.time.slice(0, 5) : "");
-        const dir = p.gapAmount >= 0 ? "입금" : "출금";
-        html += '<li><b>' + HL.fmt.esc(when) + '</b> [' + HL.fmt.sourceLabel(p.account) + '] ' +
-          '직전 거래와 잔액이 ' + HL.fmt.signedWon(p.gapAmount) +
-          ' 어긋남 → ' + dir + ' 약 ' + HL.fmt.won(Math.abs(p.gapAmount)) + ' 누락 추정 (시간 미상, 확인필요)</li>';
-      });
-      if (gaps.length > 8) html += '<li class="muted">… 외 ' + (gaps.length - 8) + '곳</li>';
-      html += '</ul>';
-    }
     box.innerHTML = html;
     box.style.display = "";
   }
@@ -124,7 +112,7 @@
       _filtered.length + "건 · 수입 " + HL.fmt.won(inc) + " · 지출 " + HL.fmt.won(exp) + " · 순액 " + HL.fmt.signedWon(inc - exp);
 
     if (!_filtered.length) {
-      tbody.innerHTML = '<tr><td colspan="4" class="muted" style="text-align:center;padding:24px">조건에 맞는 거래가 없습니다.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="5" class="muted" style="text-align:center;padding:24px">조건에 맞는 거래가 없습니다.</td></tr>';
       el("tx-more").style.display = "none";
       return;
     }
@@ -147,8 +135,21 @@
         '<td class="td-desc">' + HL.fmt.esc(t.description || "(적요 없음)") +
           '<span class="src-tag">' + HL.fmt.esc(srcLabel) + "</span>" + tagsHtml + "</td>" +
         '<td class="td-amt ' + sign + '">' + HL.fmt.signedWon(t.amount) + "</td>" +
-        '<td class="td-bal">' + bal + statusBadge(t) + "</td>";
+        '<td class="td-bal">' + bal + statusBadge(t) + "</td>" +
+        '<td class="td-act"><button type="button" class="row-del" data-id="' + HL.fmt.esc(t.id) +
+          '" title="이 거래 삭제" aria-label="삭제">✕</button></td>";
       frag.appendChild(tr);
+
+      // 검증 문제(누락 추정) 행은 바로 아래에 사유를 인라인으로 펼친다.
+      if (a && a.status === "gap") {
+        const dir = a.gapAmount >= 0 ? "입금" : "출금";
+        const note = document.createElement("tr");
+        note.className = "row-note";
+        note.innerHTML = '<td colspan="5" class="td-note">⚠ 직전 거래와 잔액이 ' +
+          HL.fmt.signedWon(a.gapAmount) + ' 어긋남 → ' + dir + ' 약 ' +
+          HL.fmt.won(Math.abs(a.gapAmount)) + ' 누락 추정 (시간 미상, 확인 필요)</td>';
+        frag.appendChild(note);
+      }
     });
     tbody.appendChild(frag);
 
@@ -175,6 +176,20 @@
       });
       el("tx-more").addEventListener("click", function () {
         _shown += PAGE; renderList();
+      });
+      // 행별 삭제 (잘못 들어온 거래 제거). tbody는 매번 다시 그려지므로 위임으로 처리.
+      el("tx-tbody").addEventListener("click", function (e) {
+        const btn = e.target && e.target.closest ? e.target.closest(".row-del") : null;
+        if (!btn) return;
+        const id = btn.getAttribute("data-id");
+        if (!id) return;
+        let label = "이 거래";
+        for (let i = 0; i < HL.state.transactions.length; i++) {
+          const x = HL.state.transactions[i];
+          if (x.id === id) { label = x.date + " · " + (x.description || "(적요 없음)") + " · " + HL.fmt.signedWon(x.amount); break; }
+        }
+        if (!confirm("이 거래를 삭제할까요?\n" + label + "\n되돌릴 수 없습니다.")) return;
+        HL.store.remove(id).then(function () { HL.app.refresh(); });
       });
     },
   };
