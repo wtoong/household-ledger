@@ -158,6 +158,30 @@ function check(name, cond) {
   check("잔액 없는 건 no-balance", rep3.annotations.p.status === "no-balance" && rep3.summary.noBalance === 1);
   check("다른 계좌 단독은 start", rep3.annotations.q.status === "start");
 
+  console.log("\n[11] 계좌(account) 기준: 토스+CSV 같은 계좌를 한 체인으로 병합 검증");
+  // 같은 새마을금고 계좌를 CSV(급여)와 토스 캡쳐(커피)로 나눠 넣어도 account가 같으면 한 체인.
+  const mgRows = HL.encoding.parseCsv(["거래일시,적요,출금금액,입금금액,잔액",
+    "2026-07-01 09:00:00,급여,,1000000,1000000"].join("\n"));
+  const mgTx = mg._internal.rowsToTransactions(mgRows, "주계좌");
+  check("account 라벨 스탬프", mgTx[0].account === "주계좌");
+  // account를 주면 dedupKey가 source-폴백과 달라진다(계좌가 키에 반영됨)
+  const mgNoAcct = mg._internal.rowsToTransactions(mgRows);
+  check("account가 dedupKey에 반영(미지정과 다름)", mgTx[0].dedupKey !== mgNoAcct[0].dedupKey);
+  check("account 미지정은 기존대로 source 폴백(키 안정)", mgNoAcct[0].account === undefined);
+
+  const tossAcct = await toss.parseText(
+    '[{"date":"2026-07-02","time":"10:00","amount":-3000,"description":"커피","balance":997000}]', { account: "주계좌" });
+  check("토스도 account 스탬프", tossAcct[0].account === "주계좌");
+
+  const merged = [
+    Object.assign({ id: "m1" }, mgTx[0]),
+    Object.assign({ id: "t1" }, tossAcct[0]),
+  ];
+  const repM = HL.balance.validate(merged);
+  check("같은 계좌라 한 체인: CSV가 기준점", repM.annotations.m1.status === "start");
+  check("토스 거래가 잔액으로 연속 확정(ok)", repM.annotations.t1.status === "ok");
+  check("누락/문제 없음", repM.summary.gaps === 0);
+
   console.log("\n결과: " + pass + " passed, " + fail + " failed\n");
   process.exit(fail ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -79,8 +79,8 @@
       gaps.slice(0, 8).forEach(function (p) {
         const when = p.date + (p.time ? " " + p.time.slice(0, 5) : "");
         const dir = p.gapAmount >= 0 ? "입금" : "출금";
-        html += '<li><b>' + HL.fmt.esc(when) + '</b> 직전 사이 ' +
-          HL.fmt.sourceLabel(p.source) + ' 잔액이 ' + HL.fmt.signedWon(p.gapAmount) +
+        html += '<li><b>' + HL.fmt.esc(when) + '</b> [' + HL.fmt.sourceLabel(p.account) + '] ' +
+          '직전 거래와 잔액이 ' + HL.fmt.signedWon(p.gapAmount) +
           ' 어긋남 → ' + dir + ' 약 ' + HL.fmt.won(Math.abs(p.gapAmount)) + ' 누락 추정 (시간 미상, 확인필요)</li>';
       });
       if (gaps.length > 8) html += '<li class="muted">… 외 ' + (gaps.length - 8) + '곳</li>';
@@ -128,7 +128,8 @@
     slice.forEach(function (t) {
       const tr = document.createElement("tr");
       const sign = t.amount >= 0 ? "pos" : "neg";
-      const srcLabel = HL.fmt.sourceLabel(t.source);
+      // 계좌 라벨이 있으면 그걸 보여주고(잔액·현금흐름 단위), 없으면 소스명.
+      const srcLabel = t.account ? t.account : HL.fmt.sourceLabel(t.source);
       const timeLabel = t.time ? '<span class="td-time">' + HL.fmt.esc(t.time.slice(0, 5)) + "</span>" : "";
       const bal = typeof t.balance === "number" ? HL.fmt.won(t.balance) : "";
       const a = _report.annotations[t.id];

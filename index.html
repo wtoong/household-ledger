@@ -92,6 +92,10 @@
         <label class="block">소스
           <select id="import-source"></select>
         </label>
+        <label class="block">계좌 <span class="muted small">(잔액·현금흐름 단위. 토스가 같은 새마을금고 계좌 이력이면 같은 라벨로 묶으세요)</span>
+          <input type="text" id="import-account" list="account-labels" placeholder="예: 새마을금고 주계좌 (비우면 소스명으로 묶임)" autocomplete="off" />
+          <datalist id="account-labels"></datalist>
+        </label>
         <p id="import-help" class="muted small"></p>
 
         <!-- 파일 업로드 -->

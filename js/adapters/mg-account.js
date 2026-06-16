@@ -100,7 +100,7 @@
     return bestScore >= 2 ? best : 0;
   }
 
-  function rowsToTransactions(rows) {
+  function rowsToTransactions(rows, account) {
     if (!rows.length) return [];
     const hr = detectHeaderRow(rows);
     const headers = rows[hr];
@@ -138,8 +138,10 @@
       const description = cDesc !== -1 ? String(row[cDesc] == null ? "" : row[cDesc]).trim() : "";
       const balance = cBal !== -1 ? num(row[cBal]) : undefined;
 
-      // dedupKey: 시각·잔액까지 포함해 같은 날 동일 금액/적요 충돌을 줄인다 (PRD 5.2)
-      const keyParts = [SOURCE, date, time || "", amount, description, balance == null ? "" : balance];
+      // dedupKey 기준은 '계좌(account)'. 지정 안 하면 SOURCE로 폴백해 기존 멱등성을 유지한다.
+      // 시각·잔액까지 포함해 같은 날 동일 금액/적요 충돌을 줄인다 (PRD 5.2)
+      const acct = account || SOURCE;
+      const keyParts = [acct, date, time || "", amount, description, balance == null ? "" : balance];
       out.push({
         date: date,
         time: time || undefined,
@@ -147,6 +149,7 @@
         type: amount >= 0 ? "income" : "expense",
         description: description,
         source: SOURCE,
+        account: account || undefined,
         balance: typeof balance === "number" ? balance : undefined,
         dedupKey: HL.hash.cyrb53(keyParts.join("|")),
       });
@@ -163,7 +166,8 @@
     });
   }
 
-  function parse(file) {
+  function parse(file, opts) {
+    const account = opts && opts.account ? opts.account : undefined;
     const name = (file.name || "").toLowerCase();
     const isXlsx = /\.(xlsx|xls)$/.test(name);
     return readFileBuffer(file).then(function (buf) {
@@ -179,7 +183,7 @@
         const text = HL.encoding.decodeBuffer(buf);
         rows = HL.encoding.parseCsv(text);
       }
-      return rowsToTransactions(rows);
+      return rowsToTransactions(rows, account);
     });
   }
 
