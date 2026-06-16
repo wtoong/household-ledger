@@ -37,5 +37,37 @@
     return { month: month, income: 0, expense: 0, net: 0, count: 0 };
   }
 
-  HL.aggregate = { monthly: monthly, totalsForMonth: totalsForMonth, monthKey: monthKey };
+  // 잔액 추이: balance가 있는 거래만 사용해 날짜별 "합산 잔액"을 만든다.
+  // 소스(계좌)별로 가장 최근에 알려진 잔액을 들고 있다가, 각 시점에 모두 더해 총 보유 잔액을 낸다.
+  // (단일 계좌면 그 계좌 잔액 그대로, 여러 계좌면 계좌 합계의 시계열)
+  // 반환: [{date:'YYYY-MM-DD', balance}] 날짜 오름차순
+  function balanceSeries(transactions) {
+    const withBal = transactions.filter(function (t) {
+      return typeof t.balance === "number" && t.date;
+    });
+    if (!withBal.length) return [];
+    // 날짜 오름차순. 같은 날은 원래 순서를 유지(은행 파일은 대체로 시간순) — sort 안정성에 의존.
+    const sorted = withBal.slice().sort(function (a, b) {
+      return a.date < b.date ? -1 : a.date > b.date ? 1 : 0;
+    });
+    const lastBySource = {}; // source -> 가장 최근 잔액
+    const byDate = new Map(); // date -> 그 날 종료시점의 합산 잔액
+    sorted.forEach(function (t) {
+      lastBySource[t.source || "_"] = t.balance;
+      let total = 0;
+      for (const k in lastBySource) total += lastBySource[k];
+      byDate.set(t.date, total); // 같은 날 여러 건이면 마지막 값으로 갱신
+    });
+    const out = [];
+    byDate.forEach(function (bal, date) { out.push({ date: date, balance: bal }); });
+    out.sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+    return out;
+  }
+
+  HL.aggregate = {
+    monthly: monthly,
+    totalsForMonth: totalsForMonth,
+    monthKey: monthKey,
+    balanceSeries: balanceSeries,
+  };
 })();
