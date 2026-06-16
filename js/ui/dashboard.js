@@ -59,6 +59,9 @@
       onSelect: function (m) { HL.state.selectedMonth = m; render(); },
     });
 
+    // 잔액 변동 추이(전체 기간, 선택 월과 무관)
+    HL.charts.renderLine(el("dash-balance-chart"), HL.aggregate.balanceSeries(txs));
+
     if (!txs.length) {
       el("dash-empty").style.display = "";
     } else {

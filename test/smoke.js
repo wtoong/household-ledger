@@ -92,6 +92,22 @@ function check(name, cond) {
   check("2026-06 순액 2,495,000", jun.net === 2495000);
   check("월 정렬: 05가 06보다 먼저", m[0].month === "2026-05");
 
+  console.log("\n[7] 잔액 추이 (소스별 마지막 잔액 합산)");
+  const balSample = [
+    { date: "2026-06-01", amount: -5000, source: "mg-account", balance: 1000 },
+    { date: "2026-06-02", amount: -3000, source: "toss", balance: 500 },
+    { date: "2026-06-03", amount: 200, source: "mg-account", balance: 1200 },
+    { date: "2026-06-03", amount: -100, source: "mg-account", balance: 1100 },
+    { date: "2026-06-04", amount: -1000, source: "no-balance-here" }, // balance 없음 → 제외
+  ];
+  const bs = HL.aggregate.balanceSeries(balSample);
+  check("3개 시점(날짜 중복 병합, balance 없는 건 제외)", bs.length === 3);
+  check("첫 시점 합산 1000", bs[0].balance === 1000);
+  check("둘째 시점 합산 1500 (mg1000+toss500)", bs[1].balance === 1500);
+  check("같은 날 마지막 값 사용: 1100+500=1600", bs[2].balance === 1600);
+  check("날짜 오름차순", bs[0].date === "2026-06-01" && bs[2].date === "2026-06-03");
+  check("balance 없으면 빈 배열", HL.aggregate.balanceSeries([{ date: "2026-06-01", amount: 1 }]).length === 0);
+
   console.log("\n[6] CSV 내보내기 round-trip 헤더");
   const csvOut = HL.store.exportCSV(_db);
   check("CSV 헤더 포함", csvOut.indexOf("date,amount,type,description,source") !== -1);
