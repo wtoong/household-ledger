@@ -48,14 +48,16 @@
       <div class="card">
         <h2 class="card-title">월별 수입 vs 지출</h2>
         <div id="dash-chart" class="chart-wrap"></div>
-        <p class="chart-hint muted small">막대를 탭하면 그 달, 다른 달을 한 번 더 탭하면 범위 · 좌우로 끌어 기간 이동(12개월씩)</p>
+        <p class="chart-hint muted small">막대를 누르면 그 달, 좌우로 그으면 여러 달 · <b>‹ ›</b>로 기간 이동(12개월씩)</p>
       </div>
 
       <div class="card">
         <h2 id="dash-balance-title" class="card-title">잔액 변동 추이</h2>
         <div id="dash-balance-chart" class="chart-wrap"></div>
-        <p class="chart-hint muted small">선 위의 점을 탭하면 그날 거래내역으로 이동합니다</p>
+        <p class="chart-hint muted small">선을 누르면 그날, 좌우로 그으면 연속 날짜의 거래가 아래에 표시됩니다</p>
       </div>
+
+      <div id="dash-day" class="card" style="display:none"></div>
 
       <p id="dash-empty" class="empty-hint" style="display:none">
         아직 데이터가 없습니다. 상단 <b>[가져오기]</b>에서 새마을금고 파일을 올리거나 토스 캡쳐 JSON을 붙여넣어 시작하세요.
