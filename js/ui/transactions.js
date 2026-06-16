@@ -159,13 +159,6 @@
 
   HL.transactions = {
     render: applyFilters,
-    // 특정 날짜로 좁혀 거래내역 탭으로 이동(대시보드 잔액 추이 점 탭에서 호출).
-    showDay: function (date) {
-      el("tx-from").value = date; el("tx-to").value = date;
-      el("tx-search").value = ""; el("tx-type").value = "all";
-      if (el("tx-issues-only")) el("tx-issues-only").checked = false;
-      HL.app.showTab("transactions"); // showTab이 render(applyFilters)를 호출한다
-    },
     init: function () {
       ["tx-from", "tx-to", "tx-type"].forEach(function (id) {
         el(id).addEventListener("change", applyFilters);

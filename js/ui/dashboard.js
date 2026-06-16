@@ -65,6 +65,7 @@
       HL.charts.renderBars(el("dash-chart"), [], {});
       HL.charts.renderLine(el("dash-balance-chart"), []);
       el("dash-balance-title").textContent = "잔액 변동 추이";
+      el("dash-day").style.display = "none"; el("dash-day").innerHTML = "";
       el("dash-empty").style.display = "";
       return;
     }
@@ -87,30 +88,79 @@
     el("dash-prev").disabled = panLimit(v, -1) === 0;
     el("dash-next").disabled = panLimit(v, 1) === 0;
 
-    // 월별 막대(12개월 창) + 끌어 이동 + 탭 선택
+    // 월별 막대(12개월 창). 누르면 그 달, 좌우로 그으면 범위. 이동은 ‹ › 버튼.
     HL.charts.renderBars(el("dash-chart"), windowMonths(v.monthly, v.winEnd), {
       rangeStart: rs, rangeEnd: re,
-      onTap: onTap,
-      onPan: function (delta) { pan(delta); },
+      onSelect: selectRange,
     });
 
-    // 선택 기간의 잔액 추이. 점을 탭하면 그날 거래로.
+    // 선택 기간의 잔액 추이. 누르면 그날, 그으면 연속 날짜 → 아래에 거래 표시.
     el("dash-balance-title").textContent = "잔액 변동 추이 · " + periodLabel;
     HL.charts.renderLine(el("dash-balance-chart"), HL.aggregate.balanceSeries(v.txs, rs, re), {
-      onPickDate: function (date) { HL.transactions.showDay(date); },
+      onPick: function (from, to) {
+        HL.state.dayFrom = from; HL.state.dayTo = to;
+        renderDayDetail();
+      },
     });
+
+    renderDayDetail();
   }
 
-  // 탭: 단일 선택 상태에서 다른 달을 탭하면 범위, 그 외에는 그 달 단일 선택으로 재설정.
-  function onTap(m) {
-    const rs = HL.state.rangeStart, re = HL.state.rangeEnd;
-    if (rs === re && m !== rs) {
-      HL.state.rangeStart = m < rs ? m : rs;
-      HL.state.rangeEnd = m < rs ? rs : m;
-    } else {
-      HL.state.rangeStart = m; HL.state.rangeEnd = m;
-    }
+  // 막대에서 달/범위 선택. 기간이 바뀌면 아래 날짜 상세는 닫는다.
+  function selectRange(from, to) {
+    HL.state.rangeStart = from; HL.state.rangeEnd = to;
+    HL.state.dayFrom = null; HL.state.dayTo = null;
     render();
+  }
+
+  // 잔액 추이에서 고른 날짜(또는 연속 날짜)의 거래를 카드 아래에 인라인으로 표시.
+  function renderDayDetail() {
+    const box = el("dash-day");
+    const from = HL.state.dayFrom, to = HL.state.dayTo;
+    if (!from) { box.style.display = "none"; box.innerHTML = ""; return; }
+
+    const txs = HL.perspectives.apply(HL.state.transactions, HL.state.perspective)
+      .filter(function (t) { return t.date >= from && t.date <= to; })
+      .sort(function (a, b) {
+        const ka = a.date + "T" + (a.time || ""), kb = b.date + "T" + (b.time || "");
+        return ka === kb ? 0 : (ka < kb ? 1 : -1); // 최신 먼저
+      });
+
+    const title = from === to ? (from + " 거래") : (from + " ~ " + to + " 거래");
+    let inc = 0, exp = 0;
+    txs.forEach(function (t) { if (t.amount >= 0) inc += t.amount; else exp += -t.amount; });
+
+    let rows = "";
+    if (!txs.length) {
+      rows = '<tr><td colspan="4" class="muted" style="text-align:center;padding:18px">이 날짜에는 거래가 없습니다.</td></tr>';
+    } else {
+      txs.forEach(function (t) {
+        const sign = t.amount >= 0 ? "pos" : "neg";
+        const src = t.account ? t.account : HL.fmt.sourceLabel(t.source);
+        const time = t.time ? '<span class="td-time">' + HL.fmt.esc(t.time.slice(0, 5)) + "</span>" : "";
+        const bal = typeof t.balance === "number" ? HL.fmt.won(t.balance) : "";
+        rows +=
+          '<tr><td class="td-date">' + HL.fmt.esc(t.date) + time + "</td>" +
+          '<td class="td-desc">' + HL.fmt.esc(t.description || "(적요 없음)") +
+            '<span class="src-tag">' + HL.fmt.esc(src) + "</span></td>" +
+          '<td class="td-amt ' + sign + '">' + HL.fmt.signedWon(t.amount) + "</td>" +
+          '<td class="td-bal">' + bal + "</td></tr>";
+      });
+    }
+
+    box.innerHTML =
+      '<div class="day-head"><h2 class="card-title" style="margin:0">' + HL.fmt.esc(title) + "</h2>" +
+      '<button type="button" id="dash-day-close" class="ghost-btn" aria-label="닫기">✕</button></div>' +
+      '<div class="tx-summary muted">' + txs.length + "건 · 수입 " + HL.fmt.won(inc) +
+        " · 지출 " + HL.fmt.won(exp) + " · 순액 " + HL.fmt.signedWon(inc - exp) + "</div>" +
+      '<div class="table-scroll"><table class="tx-table"><thead><tr>' +
+        "<th>날짜</th><th>적요</th><th class=\"right\">금액</th><th class=\"right\">잔액</th>" +
+        "</tr></thead><tbody>" + rows + "</tbody></table></div>";
+    box.style.display = "";
+    const close = el("dash-day-close");
+    if (close) close.addEventListener("click", function () {
+      HL.state.dayFrom = null; HL.state.dayTo = null; renderDayDetail();
+    });
   }
 
   // 창과 선택을 함께 delta개월 이동할 수 있는 실제 한도(데이터 경계로 클램프).
@@ -137,6 +187,7 @@
     HL.state.monthWindowEnd = add(v.winEnd, d);
     HL.state.rangeStart = add(v.rangeStart, d);
     HL.state.rangeEnd = add(v.rangeEnd, d);
+    HL.state.dayFrom = null; HL.state.dayTo = null; // 기간이 바뀌면 날짜 상세 닫기
     render();
   }
 

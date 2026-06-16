@@ -11,14 +11,14 @@
   }
 
   // data: [{month:'YYYY-MM', income, expense}]
-  // opts: { rangeStart, rangeEnd ('YYYY-MM'),  onTap(month), onPan(deltaMonths) }
-  //  - 막대를 탭하면 onTap(그 달).  좌우로 끌면 onPan(이동한 개월수, 새 달쪽이 +).
+  // opts: { rangeStart, rangeEnd ('YYYY-MM'),  onSelect(fromMonth, toMonth) }
+  //  - 막대를 눌렀다 떼면 그 달(from===to). 좌우로 그으면 시작~끝 범위.
   //  - rangeStart~rangeEnd 구간을 띠로 강조(같으면 단일 선택).
   function renderBars(container, data, opts) {
     opts = opts || {};
     const rangeStart = opts.rangeStart, rangeEnd = opts.rangeEnd;
     const single = rangeStart && rangeStart === rangeEnd;
-    const onTap = opts.onTap, onPan = opts.onPan;
+    const onSelect = opts.onSelect;
     function inRange(m) { return rangeStart && rangeEnd && m >= rangeStart && m <= rangeEnd; }
     container.innerHTML = "";
     if (!data.length) {
@@ -114,41 +114,46 @@
 
     container.appendChild(svg);
 
-    // --- 탭(선택) + 끌기(기간 이동) 제스처 ---
-    if (onTap || onPan) {
-      let active = false, panning = false, downX = 0, downMonth = null;
-      function scale() { const r = svg.getBoundingClientRect(); return r.width ? W / r.width : 1; }
-      function monthAt(clientX) {
+    // --- 누르면 그 달 / 좌우로 그으면 범위 선택 ---
+    if (onSelect) {
+      // 끌면서 미리 보여줄 띠
+      const preview = document.createElementNS(NS, "rect");
+      preview.setAttribute("class", "bar-band preview");
+      preview.setAttribute("y", padT);
+      preview.setAttribute("height", plotH);
+      preview.style.display = "none";
+      root.appendChild(preview);
+
+      let active = false, startIdx = 0, curIdx = 0;
+      function idxAt(clientX) {
         const r = svg.getBoundingClientRect();
-        const xUser = (clientX - r.left) * scale();
-        let idx = Math.floor((xUser - padL) / groupW);
-        idx = Math.max(0, Math.min(data.length - 1, idx));
-        return data[idx] ? data[idx].month : null;
+        const scale = r.width ? W / r.width : 1;
+        let idx = Math.floor(((clientX - r.left) * scale - padL) / groupW);
+        return Math.max(0, Math.min(data.length - 1, idx));
+      }
+      function showPreview(a, b) {
+        preview.setAttribute("x", padL + groupW * a);
+        preview.setAttribute("width", groupW * (b - a + 1));
+        preview.style.display = "";
       }
       svg.addEventListener("pointerdown", function (e) {
-        active = true; panning = false; downX = e.clientX; downMonth = monthAt(e.clientX);
+        active = true; startIdx = curIdx = idxAt(e.clientX);
+        showPreview(startIdx, startIdx);
         try { svg.setPointerCapture(e.pointerId); } catch (_) {}
       });
       svg.addEventListener("pointermove", function (e) {
         if (!active) return;
-        const dxPx = e.clientX - downX;
-        if (!panning && Math.abs(dxPx) > 6) panning = true;
-        if (panning) root.setAttribute("transform", "translate(" + (dxPx * scale()) + ",0)");
+        curIdx = idxAt(e.clientX);
+        showPreview(Math.min(startIdx, curIdx), Math.max(startIdx, curIdx));
       });
-      function finish(e) {
+      function finish() {
         if (!active) return;
-        active = false;
-        root.removeAttribute("transform");
-        if (panning) {
-          const dxUser = (e.clientX - downX) * scale();
-          const delta = Math.round(-dxUser / groupW); // 왼쪽으로 끌면 다음(최신) 쪽 +
-          if (delta && onPan) onPan(delta);
-        } else if (downMonth && onTap) {
-          onTap(downMonth);
-        }
+        active = false; preview.style.display = "none";
+        const a = Math.min(startIdx, curIdx), b = Math.max(startIdx, curIdx);
+        onSelect(data[a].month, data[b].month);
       }
       svg.addEventListener("pointerup", finish);
-      svg.addEventListener("pointercancel", function () { active = false; panning = false; root.removeAttribute("transform"); });
+      svg.addEventListener("pointercancel", function () { active = false; preview.style.display = "none"; });
     }
 
     // 범례
@@ -161,10 +166,10 @@
   }
 
   // 잔액 변동 추이 선형 차트. series: [{date:'YYYY-MM-DD', balance}]
-  // opts.onPickDate(date) 를 주면 각 시점을 탭해 그날 거래로 이동할 수 있다.
+  // opts.onPick(fromDate, toDate) 를 주면 누르면 그날(from===to), 좌우로 그으면 연속 날짜 범위.
   function renderLine(container, series, opts) {
     opts = opts || {};
-    const onPickDate = opts.onPickDate;
+    const onPick = opts.onPick;
     container.innerHTML = "";
     if (!series.length) {
       container.innerHTML = '<p class="muted">표시할 잔액 데이터가 없습니다. 잔액이 포함된 내역을 가져오면 추이가 나타납니다.</p>';
@@ -252,25 +257,16 @@
       }
     });
 
-    // 각 시점에 탭 가능한 점(작은 점 + 넓은 투명 히트). 탭하면 그날 거래내역으로.
+    // 각 시점에 작은 점 표시.
     series.forEach(function (d, i) {
-      const cxp = X(xs[i]), cyp = Y(d.balance);
       const pt = document.createElementNS(NS, "circle");
-      pt.setAttribute("cx", cxp); pt.setAttribute("cy", cyp);
+      pt.setAttribute("cx", X(xs[i])); pt.setAttribute("cy", Y(d.balance));
       pt.setAttribute("r", "2.2");
       pt.setAttribute("class", "chart-pt");
+      const ht = document.createElementNS(NS, "title");
+      ht.textContent = d.date + " · " + Math.round(d.balance).toLocaleString("ko-KR") + "원";
+      pt.appendChild(ht);
       svg.appendChild(pt);
-      if (onPickDate) {
-        const hit = document.createElementNS(NS, "circle");
-        hit.setAttribute("cx", cxp); hit.setAttribute("cy", cyp);
-        hit.setAttribute("r", "9");
-        hit.setAttribute("class", "chart-pick");
-        const ht = document.createElementNS(NS, "title");
-        ht.textContent = d.date + " · " + Math.round(d.balance).toLocaleString("ko-KR") + "원 (탭하면 그날 거래)";
-        hit.appendChild(ht);
-        hit.addEventListener("click", function () { onPickDate(d.date); });
-        svg.appendChild(hit);
-      }
     });
 
     // 마지막 지점 강조 + 현재 잔액 값
@@ -284,6 +280,54 @@
     lastTitle.textContent = series[lastI].date + " · " + Math.round(series[lastI].balance).toLocaleString("ko-KR") + "원";
     lastDot.appendChild(lastTitle);
     svg.appendChild(lastDot);
+
+    // --- 누르면 그날 / 좌우로 그으면 연속 날짜 범위 선택 ---
+    if (onPick) {
+      const band = document.createElementNS(NS, "rect");
+      band.setAttribute("class", "chart-band");
+      band.setAttribute("y", padT); band.setAttribute("height", plotH);
+      band.style.display = "none";
+      svg.insertBefore(band, svg.firstChild); // 선/면적 뒤에 깔기
+      svg.style.touchAction = "pan-y";
+      svg.style.cursor = "pointer";
+
+      let active = false, startIdx = 0, curIdx = 0;
+      function nearestIdx(clientX) {
+        const r = svg.getBoundingClientRect();
+        const scale = r.width ? W / r.width : 1;
+        const xUser = (clientX - r.left) * scale;
+        let best = 0, bd = Infinity;
+        for (let i = 0; i < series.length; i++) {
+          const dd = Math.abs(X(xs[i]) - xUser);
+          if (dd < bd) { bd = dd; best = i; }
+        }
+        return best;
+      }
+      function showBand(a, b) {
+        const xa = X(xs[a]), xb = X(xs[b]);
+        band.setAttribute("x", Math.min(xa, xb) - 3);
+        band.setAttribute("width", Math.abs(xb - xa) + 6);
+        band.style.display = "";
+      }
+      svg.addEventListener("pointerdown", function (e) {
+        active = true; startIdx = curIdx = nearestIdx(e.clientX);
+        showBand(startIdx, startIdx);
+        try { svg.setPointerCapture(e.pointerId); } catch (_) {}
+      });
+      svg.addEventListener("pointermove", function (e) {
+        if (!active) return;
+        curIdx = nearestIdx(e.clientX);
+        showBand(Math.min(startIdx, curIdx), Math.max(startIdx, curIdx));
+      });
+      function finish() {
+        if (!active) return;
+        active = false;
+        const a = Math.min(startIdx, curIdx), b = Math.max(startIdx, curIdx);
+        onPick(series[a].date, series[b].date);
+      }
+      svg.addEventListener("pointerup", finish);
+      svg.addEventListener("pointercancel", function () { active = false; band.style.display = "none"; });
+    }
 
     container.appendChild(svg);
 
