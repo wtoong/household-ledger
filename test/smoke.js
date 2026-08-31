@@ -17,7 +17,8 @@ function load(rel) {
 
 ["js/lib/hash.js", "js/lib/encoding.js", "js/core/aggregate.js", "js/core/balance.js",
  "js/adapters/registry.js", "js/adapters/mg-account.js", "js/adapters/toss-paste.js",
- "js/core/categories.js", "js/core/perspectives.js",
+ "js/adapters/backup-restore.js",
+ "js/core/categories.js", "js/core/perspectives.js", "js/core/accounts.js",
  "js/core/store.js"].forEach(load);
 
 const HL = sandbox.HL;
@@ -27,8 +28,16 @@ const _db = [];
 HL.idb = {
   getAll: () => Promise.resolve(_db.slice()),
   getAllDedupKeys: () => Promise.resolve(new Set(_db.map((t) => t.dedupKey))),
-  putMany: (items) => { items.forEach((i) => _db.push(i)); return Promise.resolve(items.length); },
+  // 실제 IndexedDB는 keyPath(id) 기준 upsert다. 스텁도 똑같이 동작해야 갱신 로직을 제대로 검증한다.
+  putMany: (items) => {
+    items.forEach((i) => {
+      const at = _db.findIndex((t) => t.id === i.id);
+      if (at >= 0) _db[at] = i; else _db.push(i);
+    });
+    return Promise.resolve(items.length);
+  },
   remove: (id) => { const i = _db.findIndex((t) => t.id === id); if (i >= 0) _db.splice(i, 1); return Promise.resolve(); },
+  removeMany: (ids) => { ids.forEach((id) => { const i = _db.findIndex((t) => t.id === id); if (i >= 0) _db.splice(i, 1); }); return Promise.resolve(ids.length); },
   clear: () => { _db.length = 0; return Promise.resolve(); },
 };
 
@@ -310,6 +319,102 @@ function check(name, cond) {
   check("큰 자금이동 = 3건", HL.perspectives.apply(pTx, "big").length === 3);
   check("부동산 = 1건(태그 기준)", HL.perspectives.apply(pTx, "realestate").length === 1);
   check("알 수 없는 관점은 전체로 폴백", HL.perspectives.apply(pTx, "nope").length === 4);
+
+  console.log("\n[17] 백업 JSON 복원 (내보내기 → 초기화 → 복원)");
+  _db.length = 0;
+  const bkTx = mg._internal.rowsToTransactions(rows, "새마을금고 주계좌");
+  await HL.store.importTransactions(bkTx);
+  // 태그/분류 결과가 붙은 상태를 만들어 둔다 (복원이 이걸 살려야 한다)
+  const snapBefore = await HL.idb.getAll();
+  snapBefore[0].tags = ["급여"]; snapBefore[0].tagStatus = "confirmed"; snapBefore[0].tagSource = "manual";
+  await HL.store.updateMany([snapBefore[0]]);
+
+  const backup = HL.store.exportJSON(await HL.idb.getAll());
+  const snapshot = JSON.parse(backup);
+  await HL.store.clear();
+  check("초기화 후 0건", (await HL.idb.getAll()).length === 0);
+
+  const restoreAdapter = HL.adapters.get("backup");
+  const revived = await restoreAdapter.parseText(backup);
+  const rr = await HL.store.importTransactions(revived);
+  const restored = await HL.idb.getAll();
+  check("3건 전부 복원", rr.added === 3 && restored.length === 3);
+
+  const byId = {};
+  restored.forEach((t) => { byId[t.id] = t; });
+  check("id 보존", snapshot.every((t) => !!byId[t.id]));
+  check("source 보존 (toss로 바뀌지 않음)", restored.every((t) => t.source === "mg-account"));
+  check("계좌 라벨 보존", restored.every((t) => t.account === "새마을금고 주계좌"));
+  check("dedupKey 보존", snapshot.every((t) => byId[t.id].dedupKey === t.dedupKey));
+  check("importedAt 보존", snapshot.every((t) => byId[t.id].importedAt === t.importedAt));
+  const restoredTagged = byId[snapshot.find((t) => t.tags && t.tags.length).id];
+  check("태그·분류 상태 보존", restoredTagged.tags[0] === "급여" && restoredTagged.tagStatus === "confirmed");
+  check("잔액 보존", restored.every((t) => typeof t.balance === "number"));
+
+  const rr2 = await HL.store.importTransactions(await restoreAdapter.parseText(backup));
+  check("두 번 복원해도 중복 0건 추가", rr2.added === 0 && rr2.skipped === 3);
+  check("DB는 여전히 3건", (await HL.idb.getAll()).length === 3);
+
+  console.log("\n[18] 계좌 그룹 집계");
+  const gTx = [
+    { id: "1", date: "2026-06-01", amount: 100, source: "mg-account", account: "주계좌", dedupKey: "k1" },
+    { id: "2", date: "2026-06-05", amount: -50, source: "toss", account: "주계좌", dedupKey: "k2" },
+    { id: "3", date: "2026-06-03", amount: -20, source: "mg-account", dedupKey: "k3" },
+  ];
+  const groups = HL.accounts.list(gTx);
+  check("라벨 있는 것과 없는 것이 다른 그룹", groups.length === 2);
+  const labeled = groups.find((g) => g.key === "a:주계좌");
+  check("라벨 그룹은 소스가 달라도 한 계좌", labeled.count === 2 && labeled.sources.length === 2);
+  check("라벨 그룹 기간 집계", labeled.first === "2026-06-01" && labeled.last === "2026-06-05");
+  check("라벨 없는 그룹은 소스 키", !!groups.find((g) => g.key === "s:mg-account"));
+  check("labels()는 실제 지정된 라벨만", HL.accounts.labels(gTx).join(",") === "주계좌");
+
+  console.log("\n[19] 계좌 라벨 오타 제안");
+  const knownLabels = ["새마을금고 주계좌", "카카오뱅크"];
+  check("한 글자 오타 잡아냄", HL.accounts.suggest("새마을금고 주게좌", knownLabels).label === "새마을금고 주계좌");
+  check("완전히 다른 라벨은 제안 없음", HL.accounts.suggest("우리은행 급여", knownLabels) === null);
+  check("이미 있는 라벨은 제안 없음", HL.accounts.suggest("카카오뱅크", knownLabels) === null);
+  check("기존 라벨이 없으면 제안 없음", HL.accounts.suggest("아무거나", []) === null);
+
+  console.log("\n[20] 라벨 일괄 변경 → dedupKey 재계산");
+  _db.length = 0;
+  const unlabeled = mg._internal.rowsToTransactions(rows); // 라벨 없이 저장한 기존 데이터
+  await HL.store.importTransactions(unlabeled);
+  const oldKeys = (await HL.idb.getAll()).map((t) => t.dedupKey).sort();
+
+  const plan = HL.accounts.relabel(await HL.idb.getAll(), "s:mg-account", "새마을금고 주계좌");
+  check("3건 이동 대상", plan.moved === 3 && plan.merged === 0);
+  await HL.store.applyRelabel(plan);
+  const relabeled = await HL.idb.getAll();
+  check("건수 그대로 3건", relabeled.length === 3);
+  check("라벨 적용됨", relabeled.every((t) => t.account === "새마을금고 주계좌"));
+  const newKeys = relabeled.map((t) => t.dedupKey).sort();
+  check("dedupKey가 새 라벨 기준으로 재계산됨", newKeys.join("|") !== oldKeys.join("|"));
+
+  // 라벨을 붙인 뒤 같은 파일을 올리면 이제 정상적으로 중복 처리되어야 한다(이게 오타 사고의 핵심).
+  const reup = await HL.store.importTransactions(
+    mg._internal.rowsToTransactions(rows, "새마을금고 주계좌"));
+  check("같은 파일 재업로드 → 전부 중복 스킵", reup.added === 0 && reup.skipped === 3);
+
+  console.log("\n[21] 라벨 병합 (같은 거래가 양쪽에 있을 때)");
+  _db.length = 0;
+  await HL.store.importTransactions(mg._internal.rowsToTransactions(rows, "주계좌"));
+  await HL.store.importTransactions(mg._internal.rowsToTransactions(rows, "주게좌")); // 오타로 또 들어간 상태
+  check("오타 라벨 때문에 6건으로 불어남", (await HL.idb.getAll()).length === 6);
+  check("계좌가 2개로 갈라짐", HL.accounts.list(await HL.idb.getAll()).length === 2);
+
+  const mergePlan = HL.accounts.relabel(await HL.idb.getAll(), "a:주게좌", "주계좌");
+  check("3건이 중복으로 정리될 예정", mergePlan.moved === 3 && mergePlan.merged === 3);
+  await HL.store.applyRelabel(mergePlan);
+  const mergedRows = await HL.idb.getAll();
+  check("병합 후 3건으로 복구", mergedRows.length === 3);
+  check("계좌 1개로 합쳐짐", HL.accounts.list(mergedRows).length === 1);
+  check("모두 주계좌 라벨", mergedRows.every((t) => t.account === "주계좌"));
+  check("dedupKey 중복 없음", new Set(mergedRows.map((t) => t.dedupKey)).size === 3);
+
+  console.log("\n[22] 병합 후 잔액 체인이 한 계좌로 이어짐");
+  const mergeRep = HL.balance.validate(mergedRows);
+  check("계좌가 갈라지지 않아 누락 추정 0곳", mergeRep.problems.filter((p) => p.kind === "gap").length === 0);
 
   console.log("\n결과: " + pass + " passed, " + fail + " failed\n");
   process.exit(fail ? 1 : 0);

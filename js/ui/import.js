@@ -11,11 +11,11 @@
     box.textContent = msg;
   }
 
-  function afterImport(res) {
-    setResult(
-      "완료: 신규 " + res.added + "건 추가, 중복 " + res.skipped + "건 건너뜀 (총 " + res.total + "건 처리).",
-      "ok"
-    );
+  function afterImport(res, dropped) {
+    let msg = "완료: 신규 " + res.added + "건 추가, 중복 " + res.skipped + "건 건너뜀 (총 " + res.total + "건 처리).";
+    // 복원은 '전부 돌아왔는지'가 핵심이라 버려진 건수를 숨기지 않는다.
+    if (dropped) msg += "\n※ " + dropped + "건은 date/amount가 없어 되살리지 못했습니다.";
+    setResult(msg, dropped ? "" : "ok");
     HL.app.refresh();
   }
 
@@ -24,6 +24,8 @@
     const adapter = HL.adapters.get(id);
     if (!adapter) return;
     el("import-help").textContent = adapter.help || "";
+    // 백업 복원은 계좌 라벨이 파일 안에 들어 있다. 여기서 덮어쓰면 복원이 아니게 되므로 칸을 감춘다.
+    el("import-account-zone").style.display = adapter.noAccount ? "none" : "";
     el("import-file-zone").style.display = adapter.kind === "file" ? "" : "none";
     el("import-text-zone").style.display = adapter.kind === "text" ? "" : "none";
     el("import-prompt-zone").style.display = adapter.promptText ? "" : "none";
@@ -32,9 +34,26 @@
     el("import-result").style.display = "none";
   }
 
-  function importOpts() {
+  // 계좌 라벨을 확정한다. 오타면 별개 계좌가 생기고 dedupKey까지 갈라지므로,
+  // 처음 보는 라벨일 때 한 번 되묻는다. 취소하면 null을 돌려 임포트를 중단한다.
+  function importOpts(adapter) {
+    if (adapter && adapter.noAccount) return {};
     const acct = el("import-account").value.trim();
-    return { account: acct || undefined };
+    if (!acct) return { account: undefined };
+
+    const known = HL.accounts.labels(HL.state.transactions);
+    if (known.indexOf(acct) !== -1) return { account: acct };
+
+    const near = HL.accounts.suggest(acct, known);
+    let msg = "‘" + acct + "’은(는) 처음 쓰는 계좌 라벨입니다.\n\n";
+    if (near) msg += "혹시 ‘" + near.label + "’를 쓰려던 건가요? (" + near.distance + "글자 차이)\n\n";
+    msg += known.length
+      ? "기존 계좌: " + known.join(", ") + "\n\n"
+      : "아직 라벨을 지정한 계좌가 없습니다.\n\n";
+    msg += "오타가 아니라면 새 계좌로 등록됩니다. 계속할까요?\n" +
+      "(나중에 데이터 관리 → 계좌 라벨에서 고치거나 합칠 수 있습니다)";
+
+    return confirm(msg) ? { account: acct } : null;
   }
 
   function handleFile() {
@@ -42,11 +61,13 @@
     const adapter = HL.adapters.get(id);
     const file = el("import-file").files[0];
     if (!file) { setResult("파일을 선택하세요.", "err"); return; }
+    const opts = importOpts(adapter);
+    if (!opts) { setResult("취소했습니다. 계좌 라벨을 확인하세요.", ""); return; }
     setResult("파싱 중…", "");
-    adapter.parse(file, importOpts())
+    adapter.parse(file, opts)
       .then(function (txs) {
         if (!txs.length) { setResult("파일에서 거래를 찾지 못했습니다. 컬럼/형식을 확인하세요.", "err"); return; }
-        return HL.store.importTransactions(txs).then(afterImport);
+        return HL.store.importTransactions(txs).then(function (res) { afterImport(res, txs._dropped); });
       })
       .catch(function (e) { setResult("오류: " + e.message, "err"); });
     el("import-file").value = "";
@@ -57,9 +78,13 @@
     const adapter = HL.adapters.get(id);
     const text = el("import-text").value;
     if (!text.trim()) { setResult("JSON을 붙여넣으세요.", "err"); return; }
+    const opts = importOpts(adapter);
+    if (!opts) { setResult("취소했습니다. 계좌 라벨을 확인하세요.", ""); return; }
     setResult("처리 중…", "");
-    adapter.parseText(text, importOpts())
-      .then(function (txs) { return HL.store.importTransactions(txs).then(afterImport); })
+    adapter.parseText(text, opts)
+      .then(function (txs) {
+        return HL.store.importTransactions(txs).then(function (res) { afterImport(res, txs._dropped); });
+      })
       .catch(function (e) { setResult("오류: " + e.message, "err"); });
   }
 
@@ -67,12 +92,8 @@
   function refreshAccountList() {
     const dl = el("account-labels");
     if (!dl) return;
-    const seen = {};
-    (HL.state.transactions || []).forEach(function (t) {
-      if (t.account && !seen[t.account]) seen[t.account] = true;
-    });
     dl.innerHTML = "";
-    Object.keys(seen).sort().forEach(function (label) {
+    HL.accounts.labels(HL.state.transactions).forEach(function (label) {
       const o = document.createElement("option");
       o.value = label;
       dl.appendChild(o);
@@ -110,6 +131,8 @@
       }
       refreshAccountList();
     },
+    // 데이터 관리 탭도 같은 datalist를 쓰므로 밖에서 다시 채울 수 있게 열어둔다.
+    refreshAccountList: refreshAccountList,
     init: function () {
       el("import-source").addEventListener("change", onAdapterChange);
       el("import-file-btn").addEventListener("click", handleFile);

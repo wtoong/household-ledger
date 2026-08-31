@@ -141,7 +141,6 @@
       // dedupKey 기준은 '계좌(account)'. 지정 안 하면 SOURCE로 폴백해 기존 멱등성을 유지한다.
       // 시각·잔액까지 포함해 같은 날 동일 금액/적요 충돌을 줄인다 (PRD 5.2)
       const acct = account || SOURCE;
-      const keyParts = [acct, date, time || "", amount, description, balance == null ? "" : balance];
       out.push({
         date: date,
         time: time || undefined,
@@ -151,7 +150,7 @@
         source: SOURCE,
         account: account || undefined,
         balance: typeof balance === "number" ? balance : undefined,
-        dedupKey: HL.hash.cyrb53(keyParts.join("|")),
+        dedupKey: HL.hash.txDedupKey(acct, date, time, amount, description, balance),
       });
     }
     return out;
