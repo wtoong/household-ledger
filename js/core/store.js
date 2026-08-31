@@ -3,10 +3,12 @@
 (function () {
   window.HL = window.HL || {};
 
-  // 어댑터 산출물 -> 완전한 표준 거래로 정규화
+  // 어댑터 산출물 -> 완전한 표준 거래로 정규화.
+  // id/importedAt은 보통 어댑터가 주지 않아 여기서 발급하지만, 백업 복원 어댑터는
+  // 원본 값을 그대로 넘긴다. 그때는 새로 만들지 않아야 진짜 '복원'이 된다.
   function normalize(t) {
     return {
-      id: HL.hash.uuid(),
+      id: t.id || HL.hash.uuid(),
       date: t.date,
       time: t.time || undefined,
       amount: t.amount,
@@ -15,7 +17,7 @@
       source: t.source,
       account: t.account || undefined, // 잔액·현금흐름의 단위(계좌 라벨). 없으면 source가 계좌 역할.
       dedupKey: t.dedupKey,
-      importedAt: new Date().toISOString(),
+      importedAt: t.importedAt || new Date().toISOString(),
       // 관점(perspective)용 태그 + 분류 상태기계.
       //   tagStatus: none(미시도) → proposed(LLM제안·검토대기) → confirmed(확정) | skipped(보류)
       //   skipped/confirmed/proposed는 재추출 대상에서 제외(none만 다시 LLM에 보냄).
@@ -34,8 +36,11 @@
   // items: 어댑터가 반환한 거래 배열. 멱등 처리 후 {added, skipped, total} 반환.
   function importTransactions(items) {
     if (!items || !items.length) return Promise.resolve({ added: 0, skipped: 0, total: 0 });
-    return HL.idb.getAllDedupKeys().then(function (existing) {
-      const seen = new Set(existing); // 이번 배치 내부 중복도 함께 제거
+    return Promise.all([HL.idb.getAllDedupKeys(), HL.idb.getAll()]).then(function (res) {
+      const seen = new Set(res[0]); // 이번 배치 내부 중복도 함께 제거
+      // 복원이 id를 들고 오므로, 다른 거래와 id가 겹치면 putMany(upsert)가 남의 레코드를 덮어쓴다.
+      // 실제로 겹칠 일은 거의 없지만 조용한 데이터 손실이라 여기서 막는다.
+      const usedIds = new Set(res[1].map(function (t) { return t.id; }));
       const fresh = [];
       let skipped = 0;
       for (let i = 0; i < items.length; i++) {
@@ -43,7 +48,10 @@
         if (!it || !it.dedupKey) { skipped++; continue; }
         if (seen.has(it.dedupKey)) { skipped++; continue; }
         seen.add(it.dedupKey);
-        fresh.push(normalize(it));
+        const n = normalize(it);
+        if (usedIds.has(n.id)) n.id = HL.hash.uuid();
+        usedIds.add(n.id);
+        fresh.push(n);
       }
       return HL.idb.putMany(fresh).then(function () {
         return { added: fresh.length, skipped: skipped, total: items.length };
@@ -57,6 +65,20 @@
 
   function remove(id) {
     return HL.idb.remove(id);
+  }
+
+  function removeMany(ids) {
+    return HL.idb.removeMany(ids);
+  }
+
+  // 계좌 라벨 일괄 변경/병합을 저장까지 수행한다.
+  // 라벨이 dedupKey에 들어가므로 갱신(updated)과 병합 중복 제거(removeIds)가 한 쌍으로 움직인다.
+  function applyRelabel(plan) {
+    return updateMany(plan.updated).then(function () {
+      return removeMany(plan.removeIds);
+    }).then(function () {
+      return { moved: plan.moved, merged: plan.merged, target: plan.target };
+    });
   }
 
   // 이미 저장된 거래(전체 레코드)를 갱신 저장. putMany는 id(keyPath)로 upsert하므로 그대로 덮어쓴다.
@@ -98,7 +120,9 @@
     importTransactions: importTransactions,
     getAll: getAll,
     remove: remove,
+    removeMany: removeMany,
     updateMany: updateMany,
+    applyRelabel: applyRelabel,
     clear: clear,
     exportJSON: exportJSON,
     exportCSV: exportCSV,

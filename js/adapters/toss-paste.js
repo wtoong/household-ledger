@@ -87,7 +87,6 @@
         const balance = (r.balance == null || r.balance === "") ? undefined : coerceNumber(r.balance);
         // dedupKey 기준은 '계좌(account)'. 지정 안 하면 SOURCE로 폴백(기존 멱등성 유지).
         const acct = account || SOURCE;
-        const keyParts = [acct, date, time || "", amount, description, (balance == null || isNaN(balance)) ? "" : balance];
         out.push({
           date: date,
           time: time,
@@ -97,7 +96,7 @@
           source: SOURCE,
           account: account || undefined,
           balance: (balance == null || isNaN(balance)) ? undefined : balance,
-          dedupKey: HL.hash.cyrb53(keyParts.join("|")),
+          dedupKey: HL.hash.txDedupKey(acct, date, time, amount, description, balance),
         });
       }
       if (!out.length) {

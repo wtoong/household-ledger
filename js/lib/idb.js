@@ -83,6 +83,21 @@
     });
   }
 
+  // 여러 건을 한 트랜잭션에서 삭제 (라벨 병합 시 중복 정리용)
+  function removeMany(ids) {
+    if (!ids || !ids.length) return Promise.resolve(0);
+    return open().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        const t = db.transaction(STORE, "readwrite");
+        const store = t.objectStore(STORE);
+        ids.forEach(function (id) { store.delete(id); });
+        t.oncomplete = function () { resolve(ids.length); };
+        t.onerror = function () { reject(t.error); };
+        t.onabort = function () { reject(t.error); };
+      });
+    });
+  }
+
   function clear() {
     return tx("readwrite").then(function (store) {
       return new Promise(function (resolve, reject) {
@@ -99,6 +114,7 @@
     getAllDedupKeys: getAllDedupKeys,
     putMany: putMany,
     remove: remove,
+    removeMany: removeMany,
     clear: clear,
   };
 })();

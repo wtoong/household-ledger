@@ -19,6 +19,14 @@
     return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16);
   }
 
+  // 거래 중복 판정 키. 계좌·날짜·시각·금액·적요·잔액 조합.
+  // 어댑터와 백업 복원, 계좌 라벨 변경이 모두 이 함수를 써야 키가 어긋나지 않는다.
+  // (라벨을 바꾸면 acct가 바뀌므로 dedupKey도 반드시 다시 계산해야 한다.)
+  function txDedupKey(acct, date, time, amount, description, balance) {
+    const bal = (balance == null || (typeof balance === "number" && isNaN(balance))) ? "" : balance;
+    return cyrb53([acct, date, time || "", amount, description == null ? "" : description, bal].join("|"));
+  }
+
   function uuid() {
     if (window.crypto && typeof window.crypto.randomUUID === "function") {
       try { return window.crypto.randomUUID(); } catch (e) {}
@@ -27,5 +35,5 @@
     return "id-" + Date.now().toString(16) + "-" + cyrb53(Math.random() + ":" + Math.random());
   }
 
-  HL.hash = { cyrb53: cyrb53, uuid: uuid };
+  HL.hash = { cyrb53: cyrb53, txDedupKey: txDedupKey, uuid: uuid };
 })();
