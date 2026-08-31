@@ -416,6 +416,38 @@ function check(name, cond) {
   const mergeRep = HL.balance.validate(mergedRows);
   check("계좌가 갈라지지 않아 누락 추정 0곳", mergeRep.problems.filter((p) => p.kind === "gap").length === 0);
 
+  console.log("\n[23] 같은 소스(source)를 쓰는 서로 다른 계좌(account)는 절대 안 섞여야 한다");
+  // 버그 재현 시나리오: 새 계좌를 같은 은행 어댑터(source)로 추가했을 때
+  // 계좌 라벨(account)이 다르면 잔액 검증도, 대시보드 합산도 완전히 분리돼야 한다.
+  const twoAccountsSameSource = [
+    { id: "A1", source: "mg-account", account: "계좌A", date: "2026-06-01", time: "09:00:00", amount: -1000, balance: 100000 },
+    { id: "B1", source: "mg-account", account: "계좌B", date: "2026-06-01", time: "09:30:00", amount: -2000, balance: 50000 },
+    { id: "A2", source: "mg-account", account: "계좌A", date: "2026-06-02", time: "09:00:00", amount: 500, balance: 100500 },
+    { id: "B2", source: "mg-account", account: "계좌B", date: "2026-06-02", time: "09:00:00", amount: -100, balance: 49900 },
+  ];
+  const rep23 = HL.balance.validate(twoAccountsSameSource);
+  check("계좌A 첫 거래는 자기 체인의 start", rep23.annotations.A1.status === "start");
+  check("계좌B 첫 거래도 자기 체인의 start(계좌A와 안 섞임)", rep23.annotations.B1.status === "start");
+  check("계좌A 두번째 거래는 ok", rep23.annotations.A2.status === "ok");
+  check("계좌B 두번째 거래는 ok", rep23.annotations.B2.status === "ok");
+  check("같은 source라도 계좌가 다르면 gap 없음", rep23.summary.gaps === 0);
+
+  const groups23 = HL.accounts.list(twoAccountsSameSource);
+  check("계좌 목록도 2개로 분리", groups23.length === 2);
+
+  // 대시보드 잔액 추이: source로만 묶으면 계좌B가 계좌A 잔액을 덮어써 합산이 틀어진다(버그).
+  // account 기준으로 묶어야 두 계좌 잔액이 각각 보존되어 올바르게 합산된다.
+  const bs23 = HL.aggregate.balanceSeries(twoAccountsSameSource);
+  check("4개 시점 모두 생성", bs23.length === 4);
+  check("첫 시점: 계좌A만 반영 100000", bs23[0].balance === 100000);
+  check("둘째 시점: 계좌A+계좌B = 150000 (덮어쓰기 없음)", bs23[1].balance === 150000);
+  check("마지막 시점: 100500+49900=150400", bs23[bs23.length - 1].balance === 150400);
+
+  // 대시보드 계좌 선택 필터: 한 계좌만 골라도 그 계좌 잔액만 나와야 한다.
+  const bs23OnlyA = HL.aggregate.balanceSeries(twoAccountsSameSource, null, null, { accounts: ["a:계좌A"] });
+  check("계좌A만 선택하면 계좌A 시점만(2개)", bs23OnlyA.length === 2);
+  check("계좌A만 선택 시 잔액도 계좌A 것만", bs23OnlyA[bs23OnlyA.length - 1].balance === 100500);
+
   console.log("\n결과: " + pass + " passed, " + fail + " failed\n");
   process.exit(fail ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(1); });

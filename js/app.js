@@ -29,6 +29,7 @@
     monthWindowEnd: null,                // 막대 차트 12개월 창의 끝(YYYY-MM)
     rangeStart: null, rangeEnd: null,    // 선택 기간(YYYY-MM)
     dayFrom: null, dayTo: null,          // 잔액 추이에서 고른 날짜/연속 날짜(YYYY-MM-DD)
+    balanceAccounts: null,               // 잔액 추이에 합산할 계좌 groupKey 배열(null=전체)
   };
 
   const views = {

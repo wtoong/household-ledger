@@ -53,6 +53,7 @@
 
       <div class="card">
         <h2 id="dash-balance-title" class="card-title">잔액 변동 추이</h2>
+        <div id="dash-balance-accounts" class="acct-chips" style="display:none"></div>
         <div id="dash-balance-chart" class="chart-wrap"></div>
         <p class="chart-hint muted small">선을 누르면 그날, 좌우로 그으면 연속 날짜의 거래가 아래에 표시됩니다</p>
       </div>
@@ -80,6 +81,9 @@
               <option value="income">수입</option>
               <option value="expense">지출</option>
             </select>
+          </label>
+          <label>계좌
+            <select id="tx-account"><option value="all">전체 계좌</option></select>
           </label>
           <label class="check"><input type="checkbox" id="tx-issues-only" /> 검증 문제만</label>
           <button id="tx-reset-filter" class="ghost-btn">초기화</button>
