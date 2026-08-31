@@ -72,18 +72,26 @@
     return acc;
   }
 
+  // 잔액은 계좌 단위 개념. 계좌 식별은 HL.accounts.groupKey로 통일한다(HL.balance도 동일 기준).
+  // 여기서 따로 정의하면 형식이 어긋나 계좌가 잘못 섞일 수 있다.
+  function acctKey(t) { return HL.accounts.groupKey(t); }
+
   // 잔액 추이: balance가 있는 거래를 "거래 단위"로 모두 펼쳐 하루 안의 등락까지 보존한다.
-  // 소스(계좌)별로 가장 최근에 알려진 잔액을 들고 있다가, 거래가 일어날 때마다 그 계좌 잔액을
-  // 갱신하고 모든 계좌의 잔액을 더한 "총 보유 잔액"을 그 시점의 한 점으로 남긴다.
-  // (단일 계좌면 그 계좌 잔액 그대로, 여러 계좌면 매 거래 시점의 계좌 합계)
+  // 계좌(account||source)별로 가장 최근에 알려진 잔액을 들고 있다가, 거래가 일어날 때마다 그
+  // 계좌 잔액을 갱신하고 (선택된) 계좌들의 잔액을 더한 "총 보유 잔액"을 그 시점의 한 점으로 남긴다.
+  // (계좌 하나면 그 계좌 잔액 그대로, 여러 계좌면 매 거래 시점의 계좌 합계)
   // 같은 날 여러 건도 각각 한 점이 되므로, 당일 큰 출렁임이 한 값으로 뭉개지지 않는다.
   // 정렬은 날짜+시각 오름차순. 같은 시각/시각 미상은 입력 순서를 유지(안정 정렬에 의존).
   // fromMonth/toMonth('YYYY-MM')를 주면 그 구간의 시점만 남긴다. 합산 잔액은
   // 전체 거래로 계산한 뒤 잘라내므로(여러 계좌의 직전 잔액이 보존됨) 절대값이 정확하다.
+  // opts.accounts: 포함할 계좌 키(acctKey) 배열/Set. 없으면 전체 계좌를 합산한다.
   // 반환: [{date:'YYYY-MM-DD', time, balance}] 날짜·시각 오름차순
-  function balanceSeries(transactions, fromMonth, toMonth) {
+  function balanceSeries(transactions, fromMonth, toMonth, opts) {
+    const include = opts && opts.accounts ? new Set(opts.accounts) : null;
     const withBal = transactions.filter(function (t) {
-      return typeof t.balance === "number" && t.date;
+      if (typeof t.balance !== "number" || !t.date) return false;
+      if (include && !include.has(acctKey(t))) return false;
+      return true;
     });
     if (!withBal.length) return [];
     // 날짜+시각 오름차순. 같은 키는 원래 순서 유지(은행 파일은 대체로 시간순) — sort 안정성에 의존.
@@ -91,12 +99,12 @@
       const ka = a.date + "T" + (a.time || ""), kb = b.date + "T" + (b.time || "");
       return ka < kb ? -1 : ka > kb ? 1 : 0;
     });
-    const lastBySource = {}; // source -> 가장 최근 잔액
+    const lastByAccount = {}; // 계좌키 -> 가장 최근 잔액
     let out = [];
     sorted.forEach(function (t) {
-      lastBySource[t.source || "_"] = t.balance;
+      lastByAccount[acctKey(t)] = t.balance;
       let total = 0;
-      for (const k in lastBySource) total += lastBySource[k];
+      for (const k in lastByAccount) total += lastByAccount[k];
       out.push({ date: t.date, time: t.time || "", balance: total }); // 거래마다 한 점
     });
     if (fromMonth || toMonth) {
@@ -119,5 +127,6 @@
     monthDiff: monthDiff,
     monthRange: monthRange,
     balanceSeries: balanceSeries,
+    acctKey: acctKey,
   };
 })();

@@ -9,6 +9,51 @@
 
   function labelMonth(key) { return key.slice(0, 4) + "년 " + (+key.slice(5, 7)) + "월"; }
 
+  // 잔액 추이 카드의 계좌 선택 칩. 기본은 전체 계좌 합산이고, 칩을 눌러 몇 개만 골라볼 수 있다.
+  // HL.state.balanceAccounts: null이면 전체, 배열이면 그 groupKey들만 합산.
+  function renderBalanceAccountFilter(container, groups) {
+    if (!container) return;
+    container.innerHTML = "";
+    if (groups.length <= 1) { container.style.display = "none"; return; }
+    container.style.display = "";
+
+    const allKeys = groups.map(function (g) { return g.key; });
+    const selected = HL.state.balanceAccounts && HL.state.balanceAccounts.length
+      ? HL.state.balanceAccounts : allKeys;
+    const selSet = new Set(selected);
+
+    const allBtn = document.createElement("button");
+    allBtn.type = "button";
+    allBtn.className = "acct-chip" + (selSet.size === allKeys.length ? " on" : "");
+    allBtn.textContent = "전체 합산 (" + allKeys.length + "개 계좌)";
+    allBtn.addEventListener("click", function () {
+      HL.state.balanceAccounts = null;
+      render();
+    });
+    container.appendChild(allBtn);
+
+    groups.forEach(function (g) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "acct-chip" + (selSet.has(g.key) ? " on" : "");
+      b.textContent = g.label || "(라벨 없음)";
+      b.title = g.count + "건 · " + g.first + " ~ " + g.last;
+      b.addEventListener("click", function () {
+        // 지금 '전체'가 선택된 상태에서 하나를 누르면 그것만 남긴다(전체 → 단일 선택으로 좁히기).
+        let cur;
+        if (selSet.size === allKeys.length) { cur = new Set([g.key]); }
+        else {
+          cur = new Set(selSet);
+          if (cur.has(g.key)) { if (cur.size > 1) cur.delete(g.key); }
+          else cur.add(g.key);
+        }
+        HL.state.balanceAccounts = Array.from(cur);
+        render();
+      });
+      container.appendChild(b);
+    });
+  }
+
   // 현재 상태/데이터로부터 창(window)·선택(range) 경계를 계산해 정규화한다.
   function computeView() {
     const txs = HL.perspectives.apply(HL.state.transactions, HL.state.perspective);
@@ -65,6 +110,7 @@
       HL.charts.renderBars(el("dash-chart"), [], {});
       HL.charts.renderLine(el("dash-balance-chart"), []);
       el("dash-balance-title").textContent = "잔액 변동 추이";
+      if (el("dash-balance-accounts")) { el("dash-balance-accounts").innerHTML = ""; el("dash-balance-accounts").style.display = "none"; }
       el("dash-day").style.display = "none"; el("dash-day").innerHTML = "";
       el("dash-empty").style.display = "";
       return;
@@ -94,14 +140,24 @@
       onSelect: selectRange,
     });
 
+    // 계좌 선택 칩(전체 합산 또는 몇 개만 골라보기)
+    const groups = HL.accounts.list(HL.state.transactions);
+    renderBalanceAccountFilter(el("dash-balance-accounts"), groups);
+    const allKeys = groups.map(function (g) { return g.key; });
+    const balAccounts = HL.state.balanceAccounts && HL.state.balanceAccounts.length
+      ? HL.state.balanceAccounts : null; // null = 전체(필터 없음)
+    const isSubset = balAccounts && balAccounts.length < allKeys.length;
+
     // 선택 기간의 잔액 추이. 누르면 그날, 그으면 연속 날짜 → 아래에 거래 표시.
-    el("dash-balance-title").textContent = "잔액 변동 추이 · " + periodLabel;
-    HL.charts.renderLine(el("dash-balance-chart"), HL.aggregate.balanceSeries(v.txs, rs, re), {
-      onPick: function (from, to) {
-        HL.state.dayFrom = from; HL.state.dayTo = to;
-        renderDayDetail();
-      },
-    });
+    el("dash-balance-title").textContent = "잔액 변동 추이 · " + periodLabel +
+      (isSubset ? " · 계좌 " + balAccounts.length + "곳 합산" : "");
+    HL.charts.renderLine(el("dash-balance-chart"),
+      HL.aggregate.balanceSeries(v.txs, rs, re, { accounts: balAccounts }), {
+        onPick: function (from, to) {
+          HL.state.dayFrom = from; HL.state.dayTo = to;
+          renderDayDetail();
+        },
+      });
 
     renderDayDetail();
   }

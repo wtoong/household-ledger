@@ -8,8 +8,8 @@
   window.HL = window.HL || {};
 
   // 잔액은 계좌 단위 개념이라 같은 계좌끼리만 체인을 만든다.
-  // account(계좌 라벨)가 우선이고, 없으면 source를 계좌로 본다(하위호환).
-  function acctKey(t) { return t.account || t.source || ""; }
+  // 계좌 식별은 HL.accounts.groupKey로 통일(대시보드 잔액 추이·거래내역 계좌 필터와 동일 기준).
+  function acctKey(t) { return HL.accounts.groupKey(t); }
   function dtKey(t) { return t.date + "T" + (t.time || ""); }
   function hasBal(t) { return typeof t.balance === "number" && !isNaN(t.balance); }
   // 원 단위 정수라 정확히 떨어지지만, 부동소수/반올림 여지를 위해 0.5원 허용.

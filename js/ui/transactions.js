@@ -12,24 +12,48 @@
   let _shown = PAGE;
   let _filtered = [];
   let _report = { annotations: {}, orderRank: {}, problems: [], summary: {} };
+  let _acctOptionsKey = "";
+
+  // 계좌 필터 select를 현재 존재하는 계좌 목록으로 채운다. 옵션 구성이 바뀔 때만 다시 그려
+  // 검색 중 매 렌더마다 선택값이 날아가지 않게 한다.
+  function renderAccountOptions() {
+    const sel = el("tx-account");
+    if (!sel) return;
+    const groups = HL.accounts.list(HL.state.transactions);
+    const key = groups.map(function (g) { return g.key; }).join("|");
+    if (key === _acctOptionsKey) return;
+    _acctOptionsKey = key;
+    const cur = sel.value;
+    sel.innerHTML = '<option value="all">전체 계좌</option>';
+    groups.forEach(function (g) {
+      const o = document.createElement("option");
+      o.value = g.key;
+      o.textContent = (g.label || "(라벨 없음)") + " (" + g.count + "건)";
+      sel.appendChild(o);
+    });
+    sel.value = (cur === "all" || groups.some(function (g) { return g.key === cur; })) ? cur : "all";
+  }
 
   function applyFilters() {
     // 관점 선택기는 매 렌더마다 현재 상태로 다시 그려 다른 탭에서 바꾼 값도 반영한다.
     HL.perspectives.renderSelector(el("tx-perspective"), HL.state.perspective, applyFilters);
+    renderAccountOptions();
 
     const from = el("tx-from").value;
     const to = el("tx-to").value;
     const q = el("tx-search").value.trim().toLowerCase();
     const type = el("tx-type").value; // all/income/expense
+    const acct = el("tx-account") ? el("tx-account").value : "all"; // all 또는 계좌 groupKey
     const issuesOnly = el("tx-issues-only") && el("tx-issues-only").checked;
 
     // 잔액 검증은 전체 거래 기준으로 한 번 계산(계좌별 체인이라 필터와 무관해야 정확).
     _report = HL.balance.validate(HL.state.transactions);
     const ann = _report.annotations;
 
-    // 관점(저장된 필터)을 먼저 적용한 뒤, 기간/검색/구분 필터를 합성한다.
+    // 관점(저장된 필터)을 먼저 적용한 뒤, 계좌/기간/검색/구분 필터를 합성한다.
     const persp = HL.perspectives.apply(HL.state.transactions, HL.state.perspective);
     _filtered = persp.filter(function (t) {
+      if (acct !== "all" && HL.accounts.groupKey(t) !== acct) return false;
       if (from && t.date < from) return false;
       if (to && t.date > to) return false;
       if (type === "income" && t.amount < 0) return false;
@@ -56,24 +80,45 @@
     renderList();
   }
 
+  // 현재 필터(계좌 포함)에 걸린 거래만 기준으로 검증 요약을 다시 센다.
+  // HL.balance.validate 자체는 항상 전체 거래로 계좌별 체인을 계산하지만(정확도용),
+  // 화면에 보여주는 요약은 "지금 보고 있는 범위"를 반영해야 계좌별 상태가 뒤섞여 보이지 않는다.
+  function scopedSummary() {
+    const ann = _report.annotations;
+    const s = { ok: 0, gaps: 0, noBalance: 0, checked: 0, reordered: 0 };
+    _filtered.forEach(function (t) {
+      const a = ann[t.id];
+      if (!a) return;
+      if (a.status === "ok") { s.ok++; s.checked++; }
+      else if (a.status === "start") { s.checked++; }
+      else if (a.status === "gap") { s.gaps++; s.checked++; }
+      else if (a.status === "no-balance") { s.noBalance++; }
+    });
+    const acct = el("tx-account") ? el("tx-account").value : "all";
+    (_report.problems || []).forEach(function (p) {
+      if (p.kind !== "reordered") return;
+      if (acct !== "all" && p.account !== acct) return;
+      s.reordered++;
+    });
+    return s;
+  }
+
   function renderValidation() {
     const box = el("tx-validation");
     if (!box) return;
-    const s = _report.summary || {};
-    const probs = _report.problems || [];
-    const gaps = probs.filter(function (p) { return p.kind === "gap"; });
+    const s = scopedSummary();
 
     if (!s.checked && !s.noBalance) { box.style.display = "none"; box.innerHTML = ""; return; }
 
     // 상세 사유는 아래 표의 각 행에 인라인으로 표시한다. 여기서는 한 줄 요약만 둔다.
     let html = '<div class="val-head">';
-    if (!gaps.length && !s.noBalance) {
+    if (!s.gaps && !s.noBalance) {
       html += '<span class="val-badge ok">✓ 잔액 연속성 확인됨</span>' +
         '<span class="muted small"> 검증한 ' + s.checked + '건이 모두 잔액과 맞물립니다 (사이 누락 없음 확정).</span>';
     } else {
       html += '<span class="val-badge warn">⚠ 잔액 검증 결과</span>';
       const parts = [];
-      if (gaps.length) parts.push(gaps.length + '곳 누락 추정(아래 ⚠ 행 참고)');
+      if (s.gaps) parts.push(s.gaps + '곳 누락 추정(아래 ⚠ 행 참고)');
       if (s.noBalance) parts.push(s.noBalance + '건은 잔액 없어 검증 불가');
       if (s.reordered) parts.push(s.reordered + '곳 같은시각 순서를 잔액으로 보정');
       html += '<span class="muted small"> ' + HL.fmt.esc(parts.join(' · ')) + '</span>';
@@ -160,7 +205,7 @@
   HL.transactions = {
     render: applyFilters,
     init: function () {
-      ["tx-from", "tx-to", "tx-type"].forEach(function (id) {
+      ["tx-from", "tx-to", "tx-type", "tx-account"].forEach(function (id) {
         el(id).addEventListener("change", applyFilters);
       });
       if (el("tx-issues-only")) el("tx-issues-only").addEventListener("change", applyFilters);
@@ -171,6 +216,7 @@
       el("tx-reset-filter").addEventListener("click", function () {
         el("tx-from").value = ""; el("tx-to").value = "";
         el("tx-search").value = ""; el("tx-type").value = "all";
+        if (el("tx-account")) el("tx-account").value = "all";
         if (el("tx-issues-only")) el("tx-issues-only").checked = false;
         applyFilters();
       });
